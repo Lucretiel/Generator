@@ -12,43 +12,54 @@
 
 #include "Generator.h"
 
-class Filter : public Generator<int, 512>
+template<class Container>
+class ContainerWrapper : public Generator<typename Container::value_type>
 {
 private:
-	std::vector<int>* container;
-	bool (*func)(int);
+	Container* container;
+	typedef typename Container::value_type v_t;
 
-	void run()
+	void run() override
 	{
-		for(int item : *container)
-		{
-			if(func(item))
-				yield(item);
-		}
+		for(v_t& obj : *container)
+			this->yield(obj);
 	}
-
 public:
-	Filter(std::vector<int>& container, bool(*func)(int)):
-		container(&container),
-		func(func)
+	ContainerWrapper(Container& c):
+		container(&c)
 	{}
 };
 
-bool divby3(int x)
+class Chain : public Generator<int>
 {
-	return x%3 == 0;
-}
+public:
+	Generator<int>* first;
+	Generator<int>* second;
+
+	void run() override
+	{
+		this->yield_from(*first);
+		this->yield_from(*second);
+	}
+
+	Chain(Generator<int>& first, Generator<int>& second):
+		first(&first),
+		second(&second)
+	{}
+};
+typedef std::vector<int> VecInt;
 
 int main(int argc, char **argv)
 {
-	std::vector<int> vec;
-	for(int i = 0; i < 20; ++i)
-		vec.push_back(i);
+	VecInt vec({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
 
-	Filter filter(vec, &divby3);
+	ContainerWrapper<VecInt> wrap1(vec);
+	ContainerWrapper<VecInt> wrap2(vec);
 
-	for(int i : vec)
+	Chain chain(wrap1, wrap2);
+
+	while(true)
 	{
-		std::cout << filter.next() << '\n';
+		std::cout << chain.next() << '\n';
 	}
 }

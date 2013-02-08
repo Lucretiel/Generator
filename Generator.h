@@ -20,12 +20,15 @@
 //TODO: add namespace
 //TODO: Exception-free or partially exception-free implementation.
 //TODO: Maybe a few less casts
+//TODO: Change the YieldBack passing style to a local member or something
+
+const unsigned default_stack_size = 1024 * 4;
 
 //Public Exceptions
 class GeneratorFinished {};
 class NotImplemented {};
 
-template<class YieldType, unsigned stack_size = 1024 * 4>
+template<class YieldType>
 class Generator
 {
 private:
@@ -37,10 +40,16 @@ private:
 
 	class ImmediateStop {};
 
+	typedef boost::optional<YieldType> YieldTypeStorage;
+
+public:
+	typedef YieldType value_type;
+
+private:
 	ManagedStack<boost::context::guarded_stack_allocator> inner_stack;
 	boost::context::fcontext_t* inner_context;
 	boost::context::fcontext_t outer_context;
-	boost::optional<YieldType> yield_value;
+	YieldTypeStorage yield_value;
 	bool started;
 
 	//initiator function to fit into make_fcontext
@@ -108,6 +117,7 @@ private:
 	{
 		inner_context = nullptr;
 		inner_stack.clear();
+		yield_value = boost::none;
 	}
 
 protected:
@@ -121,9 +131,23 @@ protected:
 		yield_value = std::move(obj);
 		yield_internal();
 	}
+	void yield_from(Generator& gen)
+	{
+		try
+		{
+			while(true)
+				yield(gen.next());
+		}
+		catch(GeneratorFinished& e)
+		{}
+	}
+	void yield_from(Generator&& gen)
+	{
+		yield_from(gen);
+	}
 
 public:
-	Generator():
+	Generator(unsigned stack_size = default_stack_size):
 		inner_stack(stack_size),
 		inner_context(nullptr),
 		started(false)
@@ -168,30 +192,27 @@ public:
 		if(!inner_context)
 			throw GeneratorFinished();
 
-		auto yield_back = yield_back_internal();
+		YieldResult yield_result = yield_back_internal();
 
 		/*
 		 * Could use a switch here, but we need block-level stack allocation,
 		 * and this way is cleaner to read
 		 */
 
-		if(yield_back == YieldResult::Object)
+		if(yield_result == YieldResult::Object)
 		{
 			YieldType obj(std::move(yield_value.get()));
 			yield_value = boost::none;
 			return obj;
 		}
-		else if(yield_back == YieldResult::Return)
+		else if(yield_result == YieldResult::Return)
 		{
 			clear_internal_context();
 			throw GeneratorFinished();
 		}
-		else
-			throw std::logic_error("Invalid YieldResult returned from yield_back_internal");
-	}
 
-	//Some stuff for the container adapter
-	typedef YieldType value_type;
+		throw std::logic_error("Error: Got an invalid type back from yield_back_iternal");
+	}
 };
 
 
