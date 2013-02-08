@@ -19,7 +19,7 @@
 //TODO: No seriously we need some separation of responsibility up in this bitch
 //TODO: add namespace
 //TODO: Exception-free or partially exception-free implementation.
-//TODO: Move, copy, and assignment operations
+//TODO: Maybe a few less casts
 
 //Public Exceptions
 class GeneratorFinished {};
