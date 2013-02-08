@@ -28,7 +28,6 @@ const unsigned default_stack_size = 1024 * 4;
 
 //Public Exceptions
 class GeneratorFinished {};
-class NotImplemented {};
 
 template<class YieldType>
 class Generator
@@ -72,7 +71,8 @@ private:
 		started = true;
 
 		try { run(); }
-		catch(ImmediateStop& stop) {}
+		catch(ImmediateStop&) {}
+		catch(GeneratorFinished&) {}
 
 		//While true here in case this context is resumed after returning
 		while(true)
