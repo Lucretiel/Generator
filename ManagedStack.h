@@ -8,9 +8,14 @@
 #ifndef MANAGEDSTACK_H_
 #define MANAGEDSTACK_H_
 
+#include "definitions.h"
+
 //Simple class to add RAII to a context stack allocator
 template<class Allocator>
 class ManagedStack
+#if NOT_CPPELEVEN
+	: boost::noncopyable
+#endif
 {
 private:
 	static Allocator alloc;
@@ -28,6 +33,7 @@ public:
 		clear();
 	}
 
+#if CPPELEVEN
 	//No copying
 	ManagedStack(const ManagedStack&) =delete;
 	ManagedStack& operator=(const ManagedStack&) =delete;
@@ -48,6 +54,7 @@ public:
 		mve._stack = nullptr;
 		return *this;
 	}
+#endif
 
 	void clear()
 	{

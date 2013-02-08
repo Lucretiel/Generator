@@ -15,6 +15,8 @@
 
 #include "ManagedStack.h"
 
+#include "definitions.h"
+
 //TODO: Fix the OH GOD IT'S ALL ONE FILE thing
 //TODO: No seriously we need some separation of responsibility up in this bitch
 //TODO: add namespace
@@ -30,6 +32,9 @@ class NotImplemented {};
 
 template<class YieldType>
 class Generator
+#if NOT_CPPELEVEN
+	: boost::noncopyable
+#endif
 {
 private:
 	//Return states from a yield, into a next call
@@ -126,11 +131,15 @@ protected:
 		yield_value = obj;
 		yield_internal();
 	}
+
+#if CPPELEVEN
 	void yield(YieldType&& obj)
 	{
 		yield_value = std::move(obj);
 		yield_internal();
 	}
+#endif
+
 	void yield_from(Generator& gen)
 	{
 		try
@@ -141,10 +150,13 @@ protected:
 		catch(GeneratorFinished& e)
 		{}
 	}
+
+#if CPPELEVEN
 	void yield_from(Generator&& gen)
 	{
 		yield_from(gen);
 	}
+#endif
 
 public:
 	Generator(unsigned stack_size = default_stack_size):
@@ -162,6 +174,7 @@ public:
 		cleanup();
 	}
 
+#if CPPELEVEN
 	Generator(const Generator&) =delete;
 	Generator& operator=(const Generator&) =delete;
 
@@ -186,6 +199,7 @@ public:
 
 		return *this;
 	}
+#endif
 
 	YieldType next()
 	{
@@ -201,7 +215,12 @@ public:
 
 		if(yield_result == YieldResult::Object)
 		{
+#if CPPELEVEN
 			YieldType obj(std::move(yield_value.get()));
+#else
+			YieldType obj(yield_value.get());
+#endif
+
 			yield_value = boost::none;
 			return obj;
 		}
@@ -214,6 +233,5 @@ public:
 		throw std::logic_error("Error: Got an invalid type back from yield_back_iternal");
 	}
 };
-
 
 #endif /* GENERATOR_H_ */
