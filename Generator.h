@@ -98,6 +98,7 @@ private:
 	{
 		if(inner_context)
 		{
+			//TODO: add a return check here
 			yield_back_internal(YieldBack::Stop);
 			clear_internal_context();
 		}
@@ -158,6 +159,8 @@ public:
 		started = mve.started;
 
 		mve.clear_internal_context();
+
+		return *this;
 	}
 
 	YieldType next()
