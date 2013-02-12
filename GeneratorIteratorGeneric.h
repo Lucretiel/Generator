@@ -17,7 +17,7 @@ public:
 	typedef typename GeneratorType::value_type value_type;
 	typedef value_type* pointer;
 	typedef value_type& reference;
-	typedef std::forward_iterator_tag iterator_category;
+	typedef std::input_iterator_tag iterator_category;
 
 private:
 	generator_type* generator;
