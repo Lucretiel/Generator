@@ -5,14 +5,19 @@
 #include <iterator>
 
 template<class GeneratorType>
-class GeneratorIteratorGeneric :
-	public std::iterator<std::input_iterator_tag,
-	                     typename GeneratorType::value_type>
+class GeneratorIteratorGeneric
 {
 private:
+	//Internal convenience typedefs
 	typedef GeneratorType generator_type;
 	typedef typename GeneratorType::generator_finished generator_finished;
+
+public:
+	//Iterator traits. Manually rolled because there's no difference_type.
 	typedef typename GeneratorType::value_type value_type;
+	typedef value_type* pointer;
+	typedef value_type& reference;
+	typedef std::forward_iterator_tag iterator_category;
 
 private:
 	generator_type* generator;
