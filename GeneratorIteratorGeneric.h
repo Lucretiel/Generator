@@ -19,6 +19,16 @@ public:
 	typedef value_type& reference;
 	typedef std::input_iterator_tag iterator_category;
 
+	/*
+	 * Some notes about the iterator interface:
+	 *   -There is no difference_type, because there's no such thing as the
+	 *    distance between two GeneratorIterators
+	 *   -GeneratorIterator meets all of the requirements of a forward
+	 *    iterator, except that a==b implies ++a==++b
+	 */
+
+	 //TODO: create a caching iterator type that preserves old values internally so it can be a full forward iterator.
+
 private:
 	generator_type* generator;
 	std::shared_ptr<value_type> yield_value;
