@@ -24,7 +24,8 @@
 //TODO: Maybe a few less casts
 //TODO: Change the YieldBack passing style to a local member or something
 
-const unsigned default_stack_size = 1024 * 4;
+//The actual stack size will be this or minimum_stacksize, whichever is larger
+const unsigned default_stack_size = 256;
 
 //Public Exceptions
 

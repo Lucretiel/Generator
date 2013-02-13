@@ -13,14 +13,15 @@ template<class Allocator>
 class ManagedStack
 {
 private:
-	static Allocator alloc;
+	typedef Allocator allocator_type;
+	static allocator_type alloc;
 	std::size_t _size;
 	void* _stack;
 
 public:
 	ManagedStack(std::size_t size):
 		_size(size),
-		_stack(alloc.allocate(size))
+		_stack(alloc.allocate(std::max(size, allocator_type::minimum_stacksize())))
 	{}
 
 	~ManagedStack()
