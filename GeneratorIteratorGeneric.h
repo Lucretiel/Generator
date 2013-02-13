@@ -2,44 +2,36 @@
 #define GENERATOR_H_
 
 #include <memory>
-#include <iterator>
+#include <boost/iterator/iterator_facade.hpp>
 
-template<class GeneratorType>
-class GeneratorIteratorGeneric
+template<class GeneratorType, typename YieldType>
+class GeneratorIteratorGeneric :
+	public boost::iterator_facade<
+		GeneratorIteratorGeneric,
+		YieldType,
+		boost::single_pass_traversal_tag
 {
 private:
 	//Internal convenience typedefs
 	typedef GeneratorType generator_type;
-	typedef typename GeneratorType::generator_finished generator_finished;
-
-public:
-	//Iterator traits. Manually rolled because there's no difference_type.
-	typedef typename GeneratorType::value_type value_type;
-	typedef value_type* pointer;
-	typedef value_type& reference;
-	typedef std::input_iterator_tag iterator_category;
-
-	/*
-	 * Some notes about the iterator interface:
-	 *   -There is no difference_type, because there's no such thing as the
-	 *    distance between two GeneratorIterators
-	 *   -GeneratorIterator meets all of the requirements of a forward
-	 *    iterator, except that a==b implies ++a==++b
-	 */
-
-	 //TODO: create a caching iterator type that preserves old values internally so it can be a full forward iterator.
+	typedef typename generator_type::generator_finished generator_finished;
+	typedef YieldType yield_type;
 
 private:
 	generator_type* generator;
-	std::shared_ptr<value_type> yield_value;
+	std::shared_ptr<yield_type> yield_value;
 
+private:
+	//iterator_facade implementations
+	
+	friend class boost::iterator_core_access;
 	void increment()
 	{
 		if(generator)
 		{
 			try
 			{
-				yield_value = make_shared<value_type>(generator->next());
+				yield_value = make_shared<yield_type>(generator->next());
 			}
 			catch(generator_finished& e)
 			{
@@ -48,68 +40,38 @@ private:
 			}
 		}
 	}
-	value_type* get()
+	yield_type& dereference()
 	{
 		if(!yield_value)
 			increment()
 		return yield_value.get();
 	}
-	bool compare(const GeneratorIterator& rhs)
+	bool equal(const GeneratorIteratorGeneric& rhs) const
 	{
 		return generator == rhs.generator && yield_value == rhs.yield_value;
 	}
 
 public:
-	GeneratorIterator() =default;
-	GeneratorIterator(GeneratorIterator& cpy) =default;
-	GeneratorIterator& operator=(GeneratorIterator& cpy) =default;
+	GeneratorIteratorGeneric() =default;
+	GeneratorIteratorGeneric(GeneratorIteratorGeneric& cpy) =default;
+	GeneratorIteratorGeneric& operator=(GeneratorIteratorGeneric& cpy) =default;
+	~GeneratorIteratorGeneric() =default;
 
-	GeneratorIterator(GeneratorIterator&& mve):
+	GeneratorIteratorGeneric(GeneratorIteratorGeneric&& mve):
 		generator(mve.generator),
 		yield_value(std::move(mve.yield_value))
 	{}
 
-	GeneratorIterator& operator=(GeneratorIterator&& mve)
+	GeneratorIteratorGeneric& operator=(GeneratorIteratorGeneric&& mve)
 	{
 		generator = mve.generator;
 		yield_value.reset();
-		yield_value.swap(mve.generator);
+		yield_value.swap(mve.yield_value);
 	}
 
-	~GeneratorIterator() {}
-
-	GeneratorIterator(generator_type* gen):
+	explicit GeneratorIteratorGeneric(generator_type* gen):
 		generator(gen)
 	{}
-
-	//POINTER STUFF
-	value_type& operator*()
-	{
-		return *get();
-	}
-	value_type* operator->()
-	{
-		return get();
-	}
-	GeneratorIterator& operator++()
-	{
-		increment();
-	}
-	//postfix
-	GeneratorIterator operator++(int)
-	{
-		GeneratorIterator it(*this);
-		increment();
-		return it;
-	}
-	bool operator==(const GeneratorIterator& rhs)
-	{
-		return compare(rhs);
-	}
-	bool operator!=(const GeneratorIterator& rhs)
-	{
-		return !compare(rhs);
-	}
 };
 
 #endif /* GENERATOR_H_ */

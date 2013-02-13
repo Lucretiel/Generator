@@ -6,7 +6,11 @@
 
 
 template<class T>
-using GeneratorIterator = GeneratorIteratorGeneric<Generator<T> >;
+using GeneratorIterator =
+	GeneratorIteratorGeneric<
+		Generator<T>,
+		typename Generator<T>::value_type>;
+		
 
 //in C++11, these can be used in place of .begin() and .end()
 template<class T>
