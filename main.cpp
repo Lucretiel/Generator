@@ -4,7 +4,7 @@
  *  Created on: Feb 7, 2013
  *      Author: nathan
  *
- *  Tests
+ *  This is really just demos. The library itself is header-only.
  */
 
 #include <iostream>

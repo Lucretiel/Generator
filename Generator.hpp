@@ -8,9 +8,7 @@
 #ifndef GENERATOR_H_
 #define GENERATOR_H_
 
-#include <exception>
 #include <utility>
-#include <memory>
 #include <boost/context/all.hpp>
 #include <boost/variant.hpp>
 
