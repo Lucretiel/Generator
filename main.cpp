@@ -9,8 +9,8 @@
 
 #include <iostream>
 #include <deque>
-#include "Generator.h"
-#include "GeneratorIterator.h"
+#include "Generator.hpp"
+#include "GeneratorIterator.hpp"
 
 class Verbose
 {

@@ -1,8 +1,8 @@
 #ifndef GENERATORITERATOR_H_
 #define GENERATORITERATOR_H_
 
-#include "GeneratorInterface.h"
-#include "GeneratorIteratorGeneric.h"
+#include "GeneratorInterface.hpp"
+#include "GeneratorIteratorGeneric.hpp"
 
 template<class T>
 using GeneratorIterator = GeneratorIteratorGeneric<GeneratorInterface<T> >;

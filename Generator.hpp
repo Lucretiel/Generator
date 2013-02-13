@@ -14,15 +14,14 @@
 #include <boost/context/all.hpp>
 #include <boost/variant.hpp>
 
-#include "GeneratorInterface.h"
-#include "ManagedStack.h"
+#include "GeneratorInterface.hpp"
+#include "ManagedStack.hpp"
 
 //TODO: Fix the OH GOD IT'S ALL ONE FILE thing
 //TODO: No seriously we need some separation of responsibility up in this bitch
+//      Specifically, split yielding and nexting into different classes.
 //TODO: add namespace
-//TODO: Exception-free or partially exception-free implementation.
 //TODO: Maybe a few less casts
-//TODO: Change the YieldBack passing style to a local member or something
 
 //The actual stack size will be this or minimum_stacksize, whichever is larger
 const unsigned default_stack_size = 256;
