@@ -44,7 +44,7 @@ private:
 	{
 		if(!yield_value)
 			increment()
-		return yield_value.get();
+		return *yield_value;
 	}
 	bool equal(const GeneratorIteratorGeneric& rhs) const
 	{
