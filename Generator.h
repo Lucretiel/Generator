@@ -136,18 +136,19 @@ protected:
 		yield_internal();
 	}
 
-	void yield_from(Generator& gen)
+	//TODO: exception-free yield_from
+	void yield_from(GeneratorInterface<yield_type>& gen)
 	{
 		try
 		{
 			while(true)
 				yield(gen.next());
 		}
-		catch(GeneratorFinished& e)
+		catch(generator_finished& e)
 		{}
 	}
 
-	void yield_from(Generator&& gen)
+	void yield_from(GeneratorInterface<yield_type>&& gen)
 	{
 		yield_from(gen);
 	}
