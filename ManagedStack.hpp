@@ -3,12 +3,13 @@
  *
  *  Created on: Feb 8, 2013
  *      Author: nathan
+ *
+ *  Simple class to add RAII to a stack allocator.
  */
 
 #ifndef MANAGEDSTACK_H_
 #define MANAGEDSTACK_H_
 
-//Simple class to add RAII to a context stack allocator
 template<class Allocator>
 class ManagedStack
 {

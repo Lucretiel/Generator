@@ -3,6 +3,9 @@
  *
  *  Created on: Feb 13, 2013
  *      Author: nathan
+ *
+ *  GeneratorInterface: For when you don't need the overhead of a context
+ *  switch.
  */
 
 #ifndef GENERATORINTERFACE_H_

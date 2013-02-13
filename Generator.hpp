@@ -87,9 +87,13 @@ private:
 		}
 	}
 
+	//The actual run implementation. This is the one you care about, clients!
 	virtual void run() =0;
 
-	//Handles the actual context switch. Object passing is handled elsewhere
+	/*
+	 * Execute a context switch OUT of the generator. Yield object assignment
+	 * is handled elsewhere
+	 */
 	void yield_internal()
 	{
 		auto result = static_cast<YieldBack>(
@@ -100,11 +104,16 @@ private:
 			throw ImmediateStop();
 	}
 
+	//Executes a context switch into the generator
 	void yield_back_jump(intptr_t x)
 	{
 		boost::context::jump_fcontext(&outer_context, inner_context, x);
 	}
 
+	/*
+	 * Handler for switching into the generator. Handles sending in yield_back,
+	 * casts, etc.
+	 */
 	void yield_back_internal(YieldBack yield_back = YieldBack::Resume)
 	{
 		if(started)
@@ -118,6 +127,7 @@ private:
 		}
 	}
 
+	//End the coroutine. This is the safe one.
 	void cleanup()
 	{
 		if(inner_context)
@@ -127,6 +137,7 @@ private:
 		}
 	}
 
+	//Destroy the coroutine. This is the unsafe on. Use cleanup() instead.
 	void clear_internal_context()
 	{
 		inner_context = nullptr;
@@ -136,12 +147,14 @@ private:
 
 protected:
 	//TODO: investigate template implementation of yield
+	//Yield a value by reference. Copies the value to internal storage.
 	void yield(const yield_type& obj)
 	{
 		yield_value = obj;
 		yield_internal();
 	}
 
+	//Yield by rvalue reference. Moves the value to internal storage.
 	void yield(yield_type&& obj)
 	{
 		yield_value = std::move(obj);
@@ -149,12 +162,15 @@ protected:
 	}
 
 	//TODO: investigate corner case with yielding nullptr
+	//Yield by pointer. Copies the pointer into internal storage
 	void yield(yield_type* ptr)
 	{
 		yield_value = ptr;
 		yield_internal();
 	}
+	//NOTE: yielding nullptr will end the coroutine.
 
+	//Yield from a generator. Only returns when gen is finished.
 	void yield_from(GeneratorInterface<yield_type>& gen)
 	{
 		while(yield_type* obj = gen.next())
@@ -216,6 +232,12 @@ public:
 		return *this;
 	}
 
+	/*
+	 * Get the next value from the generator. Returns nullptr when the
+	 * generator is finished. The returned pointer points to a value that is
+	 * handled by Generator- do not delete or hold it. This pointer is
+	 * invalidated on the next call to next().
+	 */
 	yield_type* next() override
 	{
 		if(!inner_context)
