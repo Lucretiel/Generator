@@ -8,58 +8,30 @@
  */
 
 #include <iostream>
-#include <vector>
+#include "GeneratorIterator.h"
 
-#include "Generator.h"
-
-template<class Container>
-class ContainerWrapper : public Generator<typename Container::value_type>
-{
-private:
-	Container* container;
-	typedef typename Container::value_type v_t;
-
-	void run() override
-	{
-		for(v_t& obj : *container)
-			this->yield(obj);
-	}
-public:
-	ContainerWrapper(Container& c):
-		container(&c)
-	{}
-};
-
-class Chain : public Generator<int>
+class Range5 : public Generator<int>
 {
 public:
-	Generator<int>* first;
-	Generator<int>* second;
-
-	void run() override
-	{
-		this->yield_from(*first);
-		this->yield_from(*second);
-	}
-
-	Chain(Generator<int>& first, Generator<int>& second):
-		first(&first),
-		second(&second)
+	Range5():
+		Generator(2)
 	{}
-};
-typedef std::vector<int> VecInt;
-
-int main(int argc, char **argv)
-{
-	VecInt vec({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-
-	ContainerWrapper<VecInt> wrap1(vec);
-	ContainerWrapper<VecInt> wrap2(vec);
-
-	Chain chain(wrap1, wrap2);
-
-	while(true)
+	void run()
 	{
-		std::cout << chain.next() << '\n';
+		this->yield(0);
+		this->yield(1);
+		this->yield(2);
+		this->yield(3);
+		this->yield(4);
+	}
+};
+
+int main()
+{
+	Range5 range;
+
+	for(int i : range)
+	{
+		std::cout << i << '\n';
 	}
 }

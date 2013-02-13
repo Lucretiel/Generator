@@ -10,6 +10,7 @@
 
 #include <exception>
 #include <utility>
+#include <memory>
 #include <boost/context/all.hpp>
 #include <boost/optional.hpp>
 
@@ -30,6 +31,10 @@ class GeneratorFinished {};
 template<class YieldType>
 class Generator
 {
+public:
+	typedef YieldType value_type;
+	typedef GeneratorFinished generator_finished;
+
 private:
 	//Return states from a yield, into a next call
 	enum class YieldResult : intptr_t {Object, Return};
@@ -39,11 +44,7 @@ private:
 
 	class ImmediateStop {};
 
-	typedef boost::optional<YieldType> YieldTypeStorage;
-
-public:
-	typedef YieldType value_type;
-	typedef GeneratorFinished generator_finished;
+	typedef boost::optional<value_type> YieldTypeStorage;
 
 private:
 	ManagedStack<boost::context::guarded_stack_allocator> inner_stack;
@@ -191,7 +192,7 @@ public:
 		return *this;
 	}
 
-	YieldType next()
+	value_type next()
 	{
 		if(!inner_context)
 			throw GeneratorFinished();
@@ -205,7 +206,7 @@ public:
 
 		if(yield_result == YieldResult::Object)
 		{
-			YieldType obj(std::move(yield_value.get()));
+			value_type obj(std::move(yield_value.get()));
 
 			yield_value = boost::none;
 			return obj;
@@ -218,6 +219,37 @@ public:
 
 		throw std::logic_error("Error: Got an invalid type back from yield_back_iternal");
 	}
+
+	std::unique_ptr<value_type> next_ptr()
+	{
+		if(!inner_context)
+			return nullptr;
+
+		YieldResult yield_result = yield_back_internal();
+
+		if(yield_result == YieldResult::Object)
+		{
+			std::unique_ptr<value_type> ret(
+					new value_type(std::move(yield_value.get())));
+			yield_value = boost::none;
+			return ret;
+		}
+		else if(yield_result == YieldResult::Return)
+		{
+			clear_internal_context();
+			return nullptr;
+		}
+		else
+		{
+			return nullptr;
+		}
+	}
+
+	//TODO: find a way to reduce code repetition.
+		/*
+		 * The trouble is that next() involves exceptions, while next_ptr
+		 * involves dynamic allocation.
+		 */
 };
 
 #endif /* GENERATOR_H_ */
