@@ -43,19 +43,16 @@ public:
 	}
 };
 
-class VerboseGenerator : public Generator<Verbose>
+BEGIN_GENERATOR(VerboseGenerator, Verbose)
 {
-private:
-	void run()
-	{
-		std::cout << "Generator: yielding from nameless temp\n";
-		yield(Verbose());
+	std::cout << "Generator: yielding from nameless temp\n";
+	YIELD(Verbose());
 
-		std::cout << "Generator: yielding from stack\n";
-		Verbose verbose;
-		yield(verbose);
-	}
-};
+	std::cout << "Generator: yielding from stack\n";
+	Verbose verbose;
+	YIELD(verbose);
+}
+END_GENERATOR
 
 void test1()
 {
