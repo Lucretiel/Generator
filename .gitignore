@@ -1,7 +1,7 @@
-Release
-Debug
+Release/
+Debug/
+
+*~
 
 !*.mk
 !makefile
-
-*~
