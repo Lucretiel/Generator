@@ -48,31 +48,39 @@ class VerboseGenerator : public Generator<Verbose>
 private:
 	void run()
 	{
+		std::cout << "Generator: yielding from nameless temp\n";
+		yield(Verbose());
+
 		std::cout << "Generator: yielding from stack\n";
 		Verbose verbose;
 		yield(verbose);
-
-		std::cout << "Generator: yielding from nameless temp\n";
-		yield(Verbose());
 	}
 };
 
+void test1()
+{
+	std::cout << "test1: two simple yields\n";
+	VerboseGenerator gen;
+	std::cout << "main: yield 1\n";
+	Verbose v1(*gen.next());
+	std::cout << "main: yield 2\n";
+	Verbose v2(*gen.next());
+}
+
+void test2()
+{
+	std::cout << "test2: new style for loop\n";
+	VerboseGenerator gen;
+	for(Verbose& v : gen)
+	{
+		std::cout << "test2, for-loop: object is " << &v << "\n";
+	}
+}
+
 int main()
 {
-	VerboseGenerator gen1;
-
-	std::cout << "main: two simple yields\n";
-	std::cout << "main: yield 1\n";
-	Verbose v1(*gen1.next());
-	std::cout << "main: yield 2\n";
-	Verbose v2(*gen1.next());
-
-	{
-		VerboseGenerator gen2;
-		std::cout << "main, subscope: only one yield, followed by out of scope\n";
-		std::cout << "main, subscope: yield 1\n";
-		Verbose v(*gen2.next());
-		std::cout << "main, subscope: exiting\n";
-	}
+	test1();
+	std::cout << '\n';
+	test2();
 	std::cout << "main: exiting\n";
 }

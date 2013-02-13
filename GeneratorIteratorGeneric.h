@@ -36,7 +36,8 @@ private:
 	{
 		if(yield_type* p_next = generator->next())
 		{
-			yield_value = std::make_shared<yield_value>(std::move(*p_next));
+			yield_value = yield_value_storage_type(
+					new yield_type(std::move(*p_next)));
 		}
 		else
 		{
