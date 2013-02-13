@@ -232,13 +232,13 @@ public:
 	}
 };
 
-#define BEGIN_GENERATOR(NAME, RETURN_TYPE) \
+#define GENERATOR(NAME, RETURN_TYPE) \
 	class NAME : public Generator<RETURN_TYPE> \
 	{ \
 	private: \
-		void run() override \
-
-#define END_GENERATOR };
+		void run() override; \
+	}; \
+	inline void NAME::run()
 
 #define YIELD this->yield
 

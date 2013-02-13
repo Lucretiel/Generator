@@ -43,7 +43,7 @@ public:
 	}
 };
 
-BEGIN_GENERATOR(VerboseGenerator, Verbose)
+GENERATOR(VerboseGenerator, Verbose)
 {
 	std::cout << "Generator: yielding from nameless temp\n";
 	YIELD(Verbose());
@@ -52,7 +52,6 @@ BEGIN_GENERATOR(VerboseGenerator, Verbose)
 	Verbose verbose;
 	YIELD(verbose);
 }
-END_GENERATOR
 
 void test1()
 {
