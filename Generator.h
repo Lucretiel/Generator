@@ -12,7 +12,7 @@
 #include <utility>
 #include <memory>
 #include <boost/context/all.hpp>
-#include <boost/optional.hpp>
+#include <boost/variant.hpp>
 
 #include "GeneratorInterface.h"
 #include "ManagedStack.h"
@@ -35,8 +35,7 @@ class Generator : public GeneratorInterface<YieldType>
 public:
 	//Have to explicitly inherit typedefs when using in definitions
 	typedef typename Generator::yield_type yield_type;
-	typedef typename Generator::generator_finished generator_finished;
-	typedef typename Generator::yield_ptr_type yield_ptr_type;
+	typedef yield_type* yield_ptr_type;
 
 private:
 	//Return states from a yield, into a next call
@@ -45,9 +44,30 @@ private:
 	//Return states from a next into a yield
 	enum class YieldBack : intptr_t {Resume, Stop};
 
+	//thrown from yield() when the context must be immediatly destroyed.
 	class ImmediateStop {}; //For throwing out of yield()
 
-	typedef boost::optional<yield_type> YieldTypeStorage;
+	//Storage for either a yield_type or pointer to a yield_type
+	typedef boost::variant<
+			boost::blank,
+			yield_type,
+			yield_ptr_type> YieldTypeStorage;
+
+	struct yield_value_getter : public boost::static_visitor<yield_ptr_type>
+	{
+		yield_ptr_type operator()(yield_type& obj) const
+		{
+			return &obj;
+		}
+		yield_ptr_type operator()(yield_ptr_type p) const
+		{
+			return p;
+		}
+		yield_ptr_type operator()(boost::blank) const
+		{
+			return nullptr;
+		}
+	};
 
 private:
 	ManagedStack<boost::context::guarded_stack_allocator> inner_stack;
@@ -72,7 +92,6 @@ private:
 
 		try { run(); }
 		catch(ImmediateStop&) {}
-		catch(GeneratorFinished&) {}
 
 		//While true here in case this context is resumed after returning
 		while(true)
@@ -122,7 +141,7 @@ private:
 	{
 		inner_context = nullptr;
 		inner_stack.clear();
-		yield_value = boost::none;
+		yield_value = boost::blank();
 	}
 
 protected:
@@ -138,16 +157,19 @@ protected:
 		yield_internal();
 	}
 
-	//TODO: exception-free yield_from
+	void yield(yield_type* ptr)
+	{
+		yield_value = ptr;
+		yield_internal();
+	}
+
 	void yield_from(GeneratorInterface<yield_type>& gen)
 	{
-		try
+		//Yes, this is supposed to be an assignment, not comparison
+		while(yield_type* obj = gen.next())
 		{
-			while(true)
-				yield(gen.next());
+			yield(obj);
 		}
-		catch(generator_finished& e)
-		{}
 	}
 
 	void yield_from(GeneratorInterface<yield_type>&& gen)
@@ -174,10 +196,16 @@ public:
 	Generator(const Generator&) =delete;
 	Generator& operator=(const Generator&) =delete;
 
+	/*
+	 * Note that move constructing or assigning a generator will invalidate any
+	 * return value pointers from next(), because the pointed-to value has
+	 * moved to the new generator.
+	 */
 	Generator(Generator&& mve):
 		inner_stack(std::move(mve.inner_stack)),
 		inner_context(mve.inner_context),
 		outer_context(mve.outer_context),
+		yield_value(std::move(mve.yield_value)),
 		started(mve.started)
 	{
 		mve.clear_internal_context();
@@ -189,6 +217,7 @@ public:
 		inner_stack = std::move(mve.inner_stack);
 		inner_context = mve.inner_context;
 		outer_context = mve.outer_context;
+		yield_value = std::move(mve.yield_value);
 		started = mve.started;
 
 		mve.clear_internal_context();
@@ -196,11 +225,12 @@ public:
 		return *this;
 	}
 
-	yield_type next() override
+	yield_type* next() override
 	{
 		if(!inner_context)
-			throw GeneratorFinished();
+			return nullptr;
 
+		yield_value = boost::blank();
 		YieldResult yield_result = yield_back_internal();
 
 		/*
@@ -210,45 +240,18 @@ public:
 
 		if(yield_result == YieldResult::Object)
 		{
-			yield_type obj(std::move(yield_value.get()));
-
-			yield_value = boost::none;
-			return obj;
+			return boost::apply_visitor(yield_value_getter(), yield_value);
 		}
 		else if(yield_result == YieldResult::Return)
 		{
 			clear_internal_context();
-			throw GeneratorFinished();
-		}
-
-		throw std::logic_error("Error: Got an invalid type back from yield_back_iternal");
-	}
-
-	yield_ptr_type next_ptr() override
-	{
-		if(!inner_context)
 			return nullptr;
-
-		YieldResult yield_result = yield_back_internal();
-
-		if(yield_result == YieldResult::Object)
-		{
-			yield_ptr_type ret(new yield_type(std::move(yield_value.get())));
-			yield_value = boost::none;
-			return ret;
 		}
-		else if(yield_result == YieldResult::Return)
-		{
-			clear_internal_context();
-		}
-		return nullptr;
+
+		//If yield_result, isn't one of the YieldResult types, FUCK YOU
+		//TODO: maybe make this a little nicer
+		std::terminate();
 	}
-
-	//TODO: find a way to reduce code repetition.
-		/*
-		 * The trouble is that next() involves exceptions, while next_ptr
-		 * involves dynamic allocation.
-		 */
 };
 
 #endif /* GENERATOR_H_ */

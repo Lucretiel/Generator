@@ -8,91 +8,71 @@
  */
 
 #include <iostream>
-#include <vector>
+#include <deque>
 #include "Generator.h"
 #include "GeneratorIterator.h"
 
-class Range : public GeneratorInterface<int>
+class Verbose
 {
-private:
-	int val;
-	int stop;
-	int step;
-
-	bool increment()
-	{
-		val += step;
-		return val >= stop;
-	}
-
 public:
-	Range(int start, int stop, int step = 1):
-		val(start),
-		stop(stop),
-		step(step)
+	Verbose()
 	{
-		val -= step;
+		std::cout << this << " is being constructed!\n";
 	}
-	Range(int stop):
-		Range(0, stop, 1)
-	{}
-
-	Range::yield_type next() override
+	~Verbose()
 	{
-		if(increment())
-			throw Range::generator_finished();
-		return val;
+		std::cout << this << " is being destructed!\n";
+	}
+	Verbose(const Verbose& other)
+	{
+		std::cout << this << " is being copy constructed from " << &other << "!\n";
+	}
+	Verbose(Verbose&& other)
+	{
+		std::cout << this << " is being move constructed from " << &other << "!\n";
+	}
+	Verbose& operator=(const Verbose& other)
+	{
+		std::cout << this << " is being assigned from " << &other << "!\n";
+		return *this;
+	}
+	Verbose& operator=(Verbose&& other)
+	{
+		std::cout << this << " is being move assigned from " << &other << "!\n";
+		return *this;
 	}
 };
 
-template<class T>
-class Chain : public Generator<T>
+class VerboseGenerator : public Generator<Verbose>
 {
 private:
-	std::vector<GeneratorInterface<T>* > gens;
-
-	void add_generator(GeneratorInterface<T>* gen)
+	void run()
 	{
-		gens.push_back(gen);
-	}
+		std::cout << "Generator: yielding from stack\n";
+		Verbose verbose;
+		yield(verbose);
 
-	void add_generators()
-	{}
-
-	template<typename... Args>
-	void add_generators(GeneratorInterface<T>* gen, Args... rest)
-	{
-		add_generator(gen);
-		add_generators(rest...);
-	}
-
-	void run() override
-	{
-		for(auto gen : gens)
-		{
-			this->yield_from(*gen);
-		}
-	}
-
-public:
-	template<typename... Args>
-	Chain(Args... args)
-	{
-		add_generators(args...);
+		std::cout << "Generator: yielding from nameless temp\n";
+		yield(Verbose());
 	}
 };
 
 int main()
 {
-	Range range1(0, 10);
-	Range range2(5, 15);
-	Range range3(0, 20, 7);
+	VerboseGenerator gen1;
 
-	Chain<int> chain(&range1, &range2, &range3);
+	std::cout << "main: two simple yields\n";
+	std::cout << "main: yield 1\n";
+	Verbose v1(*gen1.next());
+	std::cout << "main: yield 2\n";
+	Verbose v2(*gen1.next());
 
-
-	for(int i : chain)
 	{
-		std::cout << i << '\n';
+		VerboseGenerator gen2;
+		std::cout << "main, subscope: only one yield, followed by out of scope\n";
+		std::cout << "main, subscope: yield 1\n";
+		Verbose v(*gen2.next());
+		std::cout << "main, subscope: exiting\n";
 	}
+	std::cout << "main: exiting\n";
 }

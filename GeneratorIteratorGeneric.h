@@ -21,24 +21,27 @@ class GeneratorIteratorGeneric :
 private:
 	//Internal convenience typedefs
 	typedef GeneratorType generator_type;
-	typedef typename generator_type::generator_finished generator_finished;
 	typedef typename generator_type::yield_type yield_type;
+	typedef std::shared_ptr<yield_type> yield_value_storage_type;
 
 private:
 	generator_type* generator;
-	std::shared_ptr<yield_type> yield_value;
+	yield_value_storage_type yield_value;
 
-public:
+private:
 	//iterator_facade implementations
 
-	//friend class boost::iterator_core_access;
+	friend class boost::iterator_core_access;
 	void increment()
 	{
-		if(generator)
+		if(yield_type* p_next = generator->next())
 		{
-			yield_value = generator->next_ptr();
-			if(!yield_value)
-				generator = nullptr;
+			yield_value = std::make_shared<yield_value>(std::move(*p_next));
+		}
+		else
+		{
+			yield_value.reset();
+			generator = nullptr;
 		}
 	}
 	yield_type& dereference() const
