@@ -1,4 +1,7 @@
 Release
 Debug
 
+!*.mk
+!makefile
+
 *~
