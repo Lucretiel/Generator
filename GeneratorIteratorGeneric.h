@@ -15,14 +15,14 @@ template<class GeneratorType>
 class GeneratorIteratorGeneric :
 	public boost::iterator_facade<
 		GeneratorIteratorGeneric<GeneratorType>,
-		typename GeneratorType::value_type,
+		typename GeneratorType::yield_type,
 		boost::single_pass_traversal_tag>
 {
 private:
 	//Internal convenience typedefs
 	typedef GeneratorType generator_type;
 	typedef typename generator_type::generator_finished generator_finished;
-	typedef typename generator_type::value_type yield_type;
+	typedef typename generator_type::yield_type yield_type;
 
 private:
 	generator_type* generator;

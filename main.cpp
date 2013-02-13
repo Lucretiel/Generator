@@ -8,6 +8,7 @@
  */
 
 #include <iostream>
+#include "Generator.h"
 #include "GeneratorIterator.h"
 
 class Range5 : public Generator<int>

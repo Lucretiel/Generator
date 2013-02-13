@@ -14,6 +14,7 @@
 #include <boost/context/all.hpp>
 #include <boost/optional.hpp>
 
+#include "GeneratorInterface.h"
 #include "ManagedStack.h"
 
 //TODO: Fix the OH GOD IT'S ALL ONE FILE thing
@@ -26,14 +27,14 @@
 const unsigned default_stack_size = 1024 * 4;
 
 //Public Exceptions
-class GeneratorFinished {};
 
 template<class YieldType>
-class Generator
+class Generator : public GeneratorInterface<YieldType>
 {
 public:
-	typedef YieldType value_type;
-	typedef GeneratorFinished generator_finished;
+	//Have to explicitly inherit typedefs when using in definitions
+	typedef typename Generator::yield_type yield_type;
+	typedef typename Generator::generator_finished generator_finished;
 
 private:
 	//Return states from a yield, into a next call
@@ -42,9 +43,9 @@ private:
 	//Return states from a next into a yield
 	enum class YieldBack : intptr_t {Resume, Stop};
 
-	class ImmediateStop {};
+	class ImmediateStop {}; //For throwing out of yield()
 
-	typedef boost::optional<value_type> YieldTypeStorage;
+	typedef boost::optional<yield_type> YieldTypeStorage;
 
 private:
 	ManagedStack<boost::context::guarded_stack_allocator> inner_stack;
@@ -123,13 +124,13 @@ private:
 	}
 
 protected:
-	void yield(const YieldType& obj)
+	void yield(const yield_type& obj)
 	{
 		yield_value = obj;
 		yield_internal();
 	}
 
-	void yield(YieldType&& obj)
+	void yield(yield_type&& obj)
 	{
 		yield_value = std::move(obj);
 		yield_internal();
@@ -192,7 +193,7 @@ public:
 		return *this;
 	}
 
-	value_type next()
+	yield_type next() override
 	{
 		if(!inner_context)
 			throw GeneratorFinished();
@@ -206,7 +207,7 @@ public:
 
 		if(yield_result == YieldResult::Object)
 		{
-			value_type obj(std::move(yield_value.get()));
+			yield_type obj(std::move(yield_value.get()));
 
 			yield_value = boost::none;
 			return obj;
@@ -220,7 +221,7 @@ public:
 		throw std::logic_error("Error: Got an invalid type back from yield_back_iternal");
 	}
 
-	std::unique_ptr<value_type> next_ptr()
+	std::unique_ptr<yield_type> next_ptr() override
 	{
 		if(!inner_context)
 			return nullptr;
@@ -229,8 +230,8 @@ public:
 
 		if(yield_result == YieldResult::Object)
 		{
-			std::unique_ptr<value_type> ret(
-					new value_type(std::move(yield_value.get())));
+			std::unique_ptr<yield_type> ret(
+					new yield_type(std::move(yield_value.get())));
 			yield_value = boost::none;
 			return ret;
 		}
