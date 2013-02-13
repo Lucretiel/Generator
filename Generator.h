@@ -35,6 +35,7 @@ public:
 	//Have to explicitly inherit typedefs when using in definitions
 	typedef typename Generator::yield_type yield_type;
 	typedef typename Generator::generator_finished generator_finished;
+	typedef typename Generator::yield_ptr_type yield_ptr_type;
 
 private:
 	//Return states from a yield, into a next call
@@ -222,7 +223,7 @@ public:
 		throw std::logic_error("Error: Got an invalid type back from yield_back_iternal");
 	}
 
-	std::unique_ptr<yield_type> next_ptr() override
+	yield_ptr_type next_ptr() override
 	{
 		if(!inner_context)
 			return nullptr;
@@ -231,20 +232,15 @@ public:
 
 		if(yield_result == YieldResult::Object)
 		{
-			std::unique_ptr<yield_type> ret(
-					new yield_type(std::move(yield_value.get())));
+			yield_ptr_type ret(new yield_type(std::move(yield_value.get())));
 			yield_value = boost::none;
 			return ret;
 		}
 		else if(yield_result == YieldResult::Return)
 		{
 			clear_internal_context();
-			return nullptr;
 		}
-		else
-		{
-			return nullptr;
-		}
+		return nullptr;
 	}
 
 	//TODO: find a way to reduce code repetition.
