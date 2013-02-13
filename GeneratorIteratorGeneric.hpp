@@ -75,8 +75,9 @@ public:
 	}
 
 	/*
-	 * Note that this is an invalid iterator. It must be incremented before the
-	 * first dereference.
+	 * Note that this is an invalid iterator as constructed. It must be
+	 * incremented before the first dereference. begin(...) in
+	 * GeneratorIterator.h takes care of this.
 	 */
 	explicit GeneratorIteratorGeneric(generator_type& gen):
 		generator(&gen)
