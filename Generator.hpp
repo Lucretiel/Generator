@@ -9,8 +9,8 @@
 #define GENERATOR_H_
 
 #include <utility>
+#include <type_traits>
 #include <boost/context/all.hpp>
-#include <boost/variant.hpp>
 
 #include "GeneratorInterface.hpp"
 #include "ManagedStack.hpp"
@@ -28,16 +28,12 @@ template<class YieldType, class Allocator = boost::context::guarded_stack_alloca
 class Generator : public GeneratorInterface<YieldType>
 {
 public:
+	//public typedefs. YieldType and the associated pointer.
 	typedef typename Generator::yield_type yield_type;
 	typedef yield_type* yield_ptr_type;
 
 private:
-	//Internal storage and state types
-	//Storage for either a yield_type or pointer to a yield_type
-	typedef boost::variant<
-			yield_ptr_type,
-			yield_type> YieldTypeStorage;
-
+	//Internal storage typedefs
 	typedef ManagedStack<Allocator> Stack;
 	typedef boost::context::fcontext_t context_type;
 
@@ -48,27 +44,16 @@ private:
 	//thrown from yield() when the context must be immediately destroyed.
 	class ImmediateStop {};
 
-	struct yield_value_getter : public boost::static_visitor<yield_ptr_type>
-	{
-		yield_ptr_type operator()(yield_type& obj) const
-		{
-			return &obj;
-		}
-		yield_ptr_type operator()(yield_ptr_type p) const
-		{
-			return p;
-		}
-	};
-
 private:
+	//State!
 	Stack inner_stack;
 	context_type* inner_context;
 	context_type outer_context;
-	YieldTypeStorage yield_value;
+	yield_ptr_type yield_value;
 	bool started;
 
 private:
-	//Wrappers for launching the coroutine
+	//Wrappers for launching the generator
 
 	//initiator function to fit into make_fcontext
 	static void static_run(intptr_t p)
@@ -81,7 +66,7 @@ private:
 	}
 
 	/*
-	 * Primary wrapper. Launches coroutine, handles ImmediateStop exceptions,
+	 * Primary wrapper. Launches context, handles ImmediateStop exceptions,
 	 * and cleans up on an exit
 	 */
 	context_type* begin_run()
@@ -103,24 +88,32 @@ private:
 	virtual void run() =0;
 	//TODO: consider using a function pointer or CRTP instead of a virtual
 
+private:
+	//Yield implementation
+
+	//Jump out of a generator
+	void yield_jump()
+	{
+		if(static_cast<YieldBack>(
+			boost::context::jump_fcontext(
+				inner_context, &outer_context, 0)) == YieldBack::Stop)
+		{
+			throw ImmediateStop();
+		}
+
 protected:
 	//Yields
 
 	/*
-	 * Primary yield function. T should be convertible to yield_type or
-	 * yield_ptr_type. Move aware.
+	 * Primary yield function. Yields the address of the object passed. This is
+	 * safe to use in most contexts, because even if an rvalue is passed, it
+	 * will have a lifespan in the yield call, and therefore an address.
 	 */
 	template<class T>
 	void yield(T&& obj)
 	{
-		yield_value = std::forward<T>(obj);
-
-		auto result = static_cast<YieldBack>(
-				boost::context::jump_fcontext(
-						inner_context, &outer_context, 0));
-
-		if(result == YieldBack::Stop)
-			throw ImmediateStop();
+		yield_value = &obj;
+		yield_jump();
 	}
 
 	//Yield from a generator. Only returns when gen is finished.
@@ -128,7 +121,7 @@ protected:
 	{
 		while(yield_type* obj = gen.next())
 		{
-			yield(obj);
+			yield(*obj);
 		}
 	}
 
@@ -143,12 +136,12 @@ protected:
 	{
 		for(auto& item : obj)
 		{
-			yield(&item);
+			yield(item);
 		}
 	}
 
 private:
-	//Functions relating to managing the coroutine (switching into it, etc)
+	//Functions relating to managing the generator context (switching into it, etc)
 
 	//Executes a context switch into the generator
 	void yield_back_jump(intptr_t x)
@@ -160,7 +153,7 @@ private:
 	 * Handler for switching into the generator. Handles sending in yield_back,
 	 * casts, etc. Returns pointer to the yielded object.
 	 */
-	yield_ptr_type yield_back_internal(YieldBack yield_back = YieldBack::Resume)
+	void yield_back_internal(YieldBack yield_back = YieldBack::Resume)
 	{
 		if(started)
 		{
@@ -171,10 +164,9 @@ private:
 			if(yield_back == YieldBack::Resume)
 				yield_back_jump(reinterpret_cast<intptr_t>(this));
 		}
-		return boost::apply_visitor(yield_value_getter(), yield_value);
 	}
 
-	//End the coroutine. This is the safe one.
+	//End the generator. This is the safe one.
 	void cleanup()
 	{
 		if(inner_context)
@@ -184,7 +176,7 @@ private:
 		}
 	}
 
-	//Destroy the coroutine. This is the unsafe one. Use cleanup() instead.
+	//Destroy the generator. This is the unsafe one. Use cleanup() instead.
 	void clear_internal_context()
 	{
 		inner_context = nullptr;
@@ -196,6 +188,7 @@ public:
 	Generator(unsigned stack_size = default_stack_size):
 		inner_stack(stack_size),
 		inner_context(nullptr),
+		yield_value(nullptr),
 		started(false)
 	{
 		inner_context = boost::context::make_fcontext(
@@ -211,17 +204,11 @@ public:
 	Generator(const Generator&) =delete;
 	Generator& operator=(const Generator&) =delete;
 
-	/*
-	 * Note that move constructing or assigning a generator MAY invalidate any
-	 * return value pointers from next(), because the pointed-to value has
-	 * moved to the new generator. If a pointer was yielded from the coroutine,
-	 * rather than a full object, it should be safe
-	 */
 	Generator(Generator&& mve):
 		inner_stack(std::move(mve.inner_stack)),
 		inner_context(mve.inner_context),
 		outer_context(mve.outer_context),
-		yield_value(std::move(mve.yield_value)),
+		yield_value(mve.yield_value),
 		started(mve.started)
 	{
 		mve.clear_internal_context();
@@ -233,7 +220,7 @@ public:
 		inner_stack = std::move(mve.inner_stack);
 		inner_context = mve.inner_context;
 		outer_context = mve.outer_context;
-		yield_value = std::move(mve.yield_value);
+		yield_value = mve.yield_value;
 		started = mve.started;
 
 		mve.clear_internal_context();
@@ -243,9 +230,10 @@ public:
 
 	/*
 	 * Get the next value from the generator. Returns nullptr when the
-	 * generator is finished. The returned pointer points to a value that is
-	 * handled by Generator- do not delete or hold it. This pointer is
-	 * invalidated on the next call to next().
+	 * generator is finished. The returned pointer points to an object managed
+	 * in some fashion by generator- do not move it or hold it. The pointed-to
+	 * value is literally the object passed into yield, so two way communication
+	 * with the generator function is possible by manipulating that value.
 	 */
 	yield_type* next() override
 	{
@@ -253,10 +241,10 @@ public:
 			return nullptr;
 
 		yield_value = nullptr;
-		yield_ptr_type ret(yield_back_internal());
+		yield_back_internal();
 
-		if(!ret) cleanup();
-		return ret;
+		if(!yield_value) cleanup();
+		return yield_value;
 	}
 };
 
