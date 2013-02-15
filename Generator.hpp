@@ -100,7 +100,7 @@ private:
 		{
 			throw ImmediateStop();
 		}
-
+	}
 protected:
 	//Yields
 
