@@ -1,87 +1,87 @@
 /*
- * GeneratorIteratorGeneric.h
+ * GeneratorIterator.h
  *
- *  Created on: Feb 13, 2013
+ *  Created on: Feb 15, 2013
  *      Author: nathan
  */
 
-#ifndef GENERATORITERATORGENERIC_H_
-#define GENERATORITERATORGENERIC_H_
+#ifndef GENERATORITERATOR_H_
+#define GENERATORITERATOR_H_
 
-#include <memory>
 #include <boost/iterator/iterator_facade.hpp>
 
-template<class GeneratorType>
-class GeneratorIteratorGeneric :
-	public boost::iterator_facade<
-		GeneratorIteratorGeneric<GeneratorType>,
-		typename GeneratorType::yield_type,
-		boost::single_pass_traversal_tag>
+struct io_iterator_tag :
+		public std::input_iterator_tag,
+		public std::output_iterator_tag
+{};
+
+template<class Generator>
+class GeneratorIterator :
+		public boost::iterator_facade<
+			GeneratorIterator<Generator>,
+			typename Generator::yield_type,
+			io_iterator_tag>
 {
-private:
-	//Internal convenience typedefs
-	typedef GeneratorType generator_type;
+public:
+	typedef Generator generator_type;
 	typedef typename generator_type::yield_type yield_type;
-	typedef std::shared_ptr<yield_type> yield_value_storage_type;
 
+	typedef typename GeneratorIterator::value_type value_type;
+	typedef typename GeneratorIterator::reference reference;
 private:
-	generator_type* generator;
-	yield_value_storage_type yield_value;
-
-private:
-	//iterator_facade implementations
+	yield_type* current;
+	generator_type* gen;
+	unsigned long increments;
 
 	friend class boost::iterator_core_access;
+
 	void increment()
 	{
-		if(yield_type* p_next = generator->next())
+		if(gen)
+			++increments;
+	}
+
+	void update()
+	{
+		while(increments && gen)
 		{
-			yield_value = yield_value_storage_type(
-					new yield_type(std::move(*p_next)));
-		}
-		else
-		{
-			yield_value.reset();
-			generator = nullptr;
+			--increments;
+			current = gen->next();
+			if(!current)
+				gen = nullptr;
 		}
 	}
-	yield_type& dereference() const
+
+	void const_update() const
 	{
-		return *yield_value;
+		const_cast<GeneratorIterator*>(this)->update();
 	}
-	bool equal(const GeneratorIteratorGeneric& rhs) const
+
+	reference dereference() const
 	{
-		return generator == rhs.generator && yield_value == rhs.yield_value;
+		const_update();
+		return *current;
+	}
+
+	bool equal(const GeneratorIterator& rhs) const
+	{
+		const_update();
+		rhs.const_update();
+		return gen == rhs.gen && current == rhs.current;
 	}
 
 public:
-	GeneratorIteratorGeneric() =default;
-	GeneratorIteratorGeneric(const GeneratorIteratorGeneric& cpy) =default;
-	GeneratorIteratorGeneric& operator=(const GeneratorIteratorGeneric& cpy) =default;
-	~GeneratorIteratorGeneric() =default;
-
-	GeneratorIteratorGeneric(GeneratorIteratorGeneric&& mve):
-		generator(mve.generator),
-		yield_value(std::move(mve.yield_value))
+	GeneratorIterator():
+		current(nullptr),
+		gen(nullptr),
+		increments(0)
 	{}
 
-	GeneratorIteratorGeneric& operator=(GeneratorIteratorGeneric&& mve)
-	{
-		generator = mve.generator;
-		yield_value.reset();
-		yield_value.swap(mve.yield_value);
-
-		return *this;
-	}
-
-	/*
-	 * Note that this is an invalid iterator as constructed. It must be
-	 * incremented before the first dereference. begin(...) in
-	 * GeneratorIterator.h takes care of this.
-	 */
-	explicit GeneratorIteratorGeneric(generator_type& gen):
-		generator(&gen)
+	GeneratorIterator(Generator& gen):
+		current(nullptr),
+		gen(&gen),
+		increments(1)
 	{}
 };
 
-#endif /* GENERATORITERATORGENERIC_H_ */
+#endif /* GENERATORITERATOR_H_ */

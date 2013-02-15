@@ -16,6 +16,7 @@ class GeneratorInterface
 {
 public:
 	typedef YieldType yield_type;
+	typedef yield_type* yield_ptr_type;
 
 	virtual ~GeneratorInterface() {}
 

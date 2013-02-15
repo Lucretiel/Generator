@@ -33,7 +33,7 @@ class Generator : public GeneratorInterface<YieldType>
 public:
 	//public typedefs. YieldType and the associated pointer.
 	typedef typename Generator::yield_type yield_type;
-	typedef yield_type* yield_ptr_type;
+	typedef typename Generator::yield_ptr_type yield_ptr_type;
 	typedef GeneratorFunc generator_func_type;
 
 private:
