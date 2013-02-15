@@ -9,94 +9,63 @@
 
 #include <iostream>
 #include <deque>
+#include <string>
 #include "Generator.hpp"
 #include "GeneratorIterator.hpp"
 
-class Verbose
+struct Var
 {
-public:
-	Verbose()
-	{
-		std::cout << this << " is being constructed!\n";
-	}
-	~Verbose()
-	{
-		std::cout << this << " is being destructed!\n";
-	}
-	Verbose(const Verbose& other)
-	{
-		std::cout << this << " is being copy constructed from " << &other << "!\n";
-	}
-	Verbose(Verbose&& other)
-	{
-		std::cout << this << " is being move constructed from " << &other << "!\n";
-	}
-	Verbose& operator=(const Verbose& other)
-	{
-		std::cout << this << " is being assigned from " << &other << "!\n";
-		return *this;
-	}
-	Verbose& operator=(Verbose&& other)
-	{
-		std::cout << this << " is being move assigned from " << &other << "!\n";
-		return *this;
-	}
+	std::string x;
 };
 
-class VerboseGenerator : public Generator<VerboseGenerator, Verbose>
+class VarGenerator : public Generator<VarGenerator, Var>
 {
 public:
 	void run()
 	{
-		std::cout << "Generator: yielding from nameless temp\n";
-		yield(Verbose());
-
-		std::cout << "Generator: yielding from stack\n";
-		Verbose v;
+		std::cout << "Generator: begin\n";
+		std::cout << "Creating new var with 'Hello'\n";
+		Var v{"hello"};
+		std::cout << "Contents of var: " << v.x << '\n';
+		std::cout << "Yielding var\n";
 		yield(v);
+		std::cout << "Contents of var: " << v.x << '\n';
 
-		std::cout << "Generator: yielding from container of 3 items\n";
-		std::deque<Verbose> v_d(3);
-		yield_from(v_d);
-
-		std::cout << "Generator: exiting\n";
+		std::cout << "Generator: exit\n";
 	}
 };
 
 void test1()
 {
-	std::cout << "test1: five simple yields\n";
-	VerboseGenerator gen;
-	std::cout << "test1: yield 1\n";
-	Verbose v1(*gen.next());
-	std::cout << "test1: yield 2\n";
-	Verbose v2(*gen.next());
-	std::cout << "test1: yield 3\n";
-	Verbose v3(*gen.next());
-	std::cout << "test1: yield 4\n";
-	Verbose v4(*gen.next());
-	std::cout << "test1: yield 5\n";
-	Verbose v5(*gen.next());
+	VarGenerator gen;
+	Var* p_v;
+
+	std::cout << "test1: begin\n";
+
+	do
+	{
+		std::cout << "Beginning loop\n";
+		p_v = gen.next();
+
+		std::cout << "Got " << p_v << " from next\n";
+		if(p_v)
+		{
+			std::cout << "Not empty! contents: " << p_v->x << '\n';
+			std::cout << "Setting to 'World'\n";
+			p_v->x = "World";
+		}
+		std::cout << "Ending loop\n";
+	} while(p_v);
 }
 
 void test2()
 {
-	std::cout << "test2: new style for loop\n";
-	VerboseGenerator gen;
-	for(Verbose& v : gen)
-	{
-		std::cout << "test2, for-loop: object is " << &v << "\n";
-	}
+
 }
 
 void test3()
 {
-	std::cout << "test3: while loop\n";
-	VerboseGenerator gen;
-	while(Verbose* p_v = gen.next())
-	{
-		std::cout << "test3, while-loop: got " << p_v << "from next\n";
-	}
+
 }
 
 int main()
