@@ -24,16 +24,20 @@
 //The actual stack size will be this or minimum_stacksize, whichever is larger
 const unsigned default_stack_size = 256;
 
-template<class YieldType, class Allocator = boost::context::guarded_stack_allocator>
+template<
+	class GeneratorFunc,
+	class YieldType,
+	class Allocator = boost::context::guarded_stack_allocator>
 class Generator : public GeneratorInterface<YieldType>
 {
 public:
 	//public typedefs. YieldType and the associated pointer.
 	typedef typename Generator::yield_type yield_type;
 	typedef yield_type* yield_ptr_type;
+	typedef GeneratorFunc generator_func_type;
 
 private:
-	//Internal storage typedefs
+	//Internal typedefs
 	typedef ManagedStack<Allocator> Stack;
 	typedef boost::context::fcontext_t context_type;
 
@@ -58,10 +62,10 @@ private:
 	//initiator function to fit into make_fcontext
 	static void static_run(intptr_t p)
 	{
-		context* outer = reinterpret_cast<Generator*>(p)->begin_run();
-		context* inner;
+		context_type* outer = reinterpret_cast<Generator*>(p)->begin_run();
+		context_type inner;
 
-		boost::jump_fcontext(inner, outer, 0);
+		boost::context::jump_fcontext(&inner, outer, 0);
 		//TODO: determine what happens if this simply returns
 	}
 
@@ -73,7 +77,7 @@ private:
 	{
 		started = true;
 
-		try { run(); }
+		try { static_cast<generator_func_type*>(this)->run(); }
 		catch(ImmediateStop&) {}
 
 		yield_value = nullptr;
@@ -83,10 +87,6 @@ private:
 
 		return &outer_context;
 	}
-
-	//The actual run implementation. This is the one you care about, clients!
-	virtual void run() =0;
-	//TODO: consider using a function pointer or CRTP instead of a virtual
 
 private:
 	//Yield implementation
@@ -134,7 +134,7 @@ protected:
 	template<class T>
 	void yield_from(T&& obj)
 	{
-		for(auto& item : obj)
+		for(auto&& item : obj)
 		{
 			yield(item);
 		}
@@ -228,6 +228,15 @@ public:
 		return *this;
 	}
 
+	generator_func_type& func_type()
+	{
+		return static_cast<generator_func_type&>(*this);
+	}
+	const generator_func_type& func_type() const
+	{
+		return static_cast<const generator_func_type&>(*this);
+	}
+
 	/*
 	 * Get the next value from the generator. Returns nullptr when the
 	 * generator is finished. The returned pointer points to an object managed
@@ -249,10 +258,11 @@ public:
 };
 
 #define GENERATOR(NAME, RETURN_TYPE) \
-	class NAME : public Generator<RETURN_TYPE> \
+	class NAME : public Generator<NAME, RETURN_TYPE> \
 	{ \
 	private: \
-		void run() override; \
+		friend class Generator<NAME, RETURN_TYPE>; \
+		void run(); \
 	}; \
 	inline void NAME::run()
 
