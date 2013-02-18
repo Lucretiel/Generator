@@ -28,6 +28,7 @@ public:
 
 	typedef typename GeneratorIterator::value_type value_type;
 	typedef typename GeneratorIterator::reference reference;
+
 private:
 	yield_type* current;
 	generator_type* gen;
@@ -41,7 +42,7 @@ private:
 			++increments;
 	}
 
-	void update()
+	void non_const_update()
 	{
 		while(increments && gen)
 		{
@@ -52,21 +53,21 @@ private:
 		}
 	}
 
-	void const_update() const
+	void update() const
 	{
-		const_cast<GeneratorIterator*>(this)->update();
+		const_cast<GeneratorIterator*>(this)->non_const_update();
 	}
 
 	reference dereference() const
 	{
-		const_update();
+		update();
 		return *current;
 	}
 
 	bool equal(const GeneratorIterator& rhs) const
 	{
-		const_update();
-		rhs.const_update();
+		update();
+		rhs.update();
 		return gen == rhs.gen && current == rhs.current;
 	}
 

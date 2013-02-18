@@ -12,7 +12,6 @@
 #include <type_traits>
 #include <boost/context/all.hpp>
 
-#include "GeneratorInterface.hpp"
 #include "ManagedStack.hpp"
 
 //TODO: Fix the OH GOD IT'S ALL ONE FILE thing
@@ -28,12 +27,12 @@ template<
 	class GeneratorFunc,
 	class YieldType,
 	class Allocator = boost::context::guarded_stack_allocator>
-class Generator : public GeneratorInterface<YieldType>
+class Generator
 {
 public:
 	//public typedefs. YieldType and the associated pointer.
-	typedef typename Generator::yield_type yield_type;
-	typedef typename Generator::yield_ptr_type yield_ptr_type;
+	typedef YieldType yield_type;
+	typedef YieldType* yield_ptr_type;
 	typedef GeneratorFunc generator_func_type;
 
 private:
@@ -53,7 +52,6 @@ private:
 	Stack inner_stack;
 	context_type* inner_context;
 	context_type outer_context;
-	yield_ptr_type yield_value;
 	bool started;
 
 private:
@@ -64,8 +62,10 @@ private:
 	{
 		context_type* outer = reinterpret_cast<Generator*>(p)->begin_run();
 		context_type inner;
+		yield_ptr_type val = nullptr;
 
-		boost::context::jump_fcontext(&inner, outer, 0);
+		boost::context::jump_fcontext(&inner, outer,
+				reinterpret_cast<intptr_t>(val));
 		//TODO: determine what happens if this simply returns
 	}
 
@@ -77,10 +77,8 @@ private:
 	{
 		started = true;
 
-		try { static_cast<generator_func_type*>(this)->run(); }
+		try { crtp_reference().run(); }
 		catch(ImmediateStop&) {}
-
-		yield_value = nullptr;
 
 		//Point of no return
 		inner_context = nullptr;
@@ -92,11 +90,11 @@ private:
 	//Yield implementation
 
 	//Jump out of a generator
-	void yield_jump()
+	void yield_jump(yield_ptr_type val)
 	{
 		if(static_cast<YieldBack>(
-			boost::context::jump_fcontext(
-				inner_context, &outer_context, 0)) == YieldBack::Stop)
+					boost::context::jump_fcontext(inner_context, &outer_context,
+							reinterpret_cast<intptr_t>(val))) == YieldBack::Stop)
 		{
 			throw ImmediateStop();
 		}
@@ -112,57 +110,49 @@ protected:
 	template<class T>
 	void yield(T&& obj)
 	{
-		yield_value = &obj;
-		yield_jump();
+		yield_ptr_type yield_value = &obj;
+		yield_jump(yield_value);
 	}
 
-	//Yield from a generator. Only returns when gen is finished.
-	void yield_from(GeneratorInterface<yield_type>& gen)
-	{
-		while(yield_type* obj = gen.next())
-		{
-			yield(*obj);
-		}
-	}
-
-	void yield_from(GeneratorInterface<yield_type>&& gen)
-	{
-		yield_from(gen);
-	}
-
-	//yield from some other iterable
+	//yield from some iterable
 	template<class T>
 	void yield_from(T&& obj)
 	{
 		for(auto&& item : obj)
-		{
 			yield(item);
-		}
 	}
 
 private:
 	//Functions relating to managing the generator context (switching into it, etc)
 
 	//Executes a context switch into the generator
-	void yield_back_jump(intptr_t x)
+	yield_ptr_type yield_back_jump(intptr_t val)
 	{
-		boost::context::jump_fcontext(&outer_context, inner_context, x);
+		return reinterpret_cast<yield_ptr_type>(
+			boost::context::jump_fcontext(
+				&outer_context, inner_context, val));
 	}
 
 	/*
 	 * Handler for switching into the generator. Handles sending in yield_back,
 	 * casts, etc. Returns pointer to the yielded object.
 	 */
-	void yield_back_internal(YieldBack yield_back = YieldBack::Resume)
+	yield_ptr_type yield_back_internal(YieldBack yield_back = YieldBack::Resume)
 	{
 		if(started)
 		{
-			yield_back_jump(static_cast<intptr_t>(yield_back));
+			return yield_back_jump(static_cast<intptr_t>(yield_back));
 		}
 		else
 		{
 			if(yield_back == YieldBack::Resume)
-				yield_back_jump(reinterpret_cast<intptr_t>(this));
+			{
+				//Take no chances with reinterpret cast
+				Generator* self = this;
+				return yield_back_jump(reinterpret_cast<intptr_t>(self));
+			}
+			else
+				return nullptr;
 		}
 	}
 
@@ -181,20 +171,18 @@ private:
 	{
 		inner_context = nullptr;
 		inner_stack.clear();
-		yield_value = nullptr;
 	}
 
 public:
 	Generator(unsigned stack_size = default_stack_size):
 		inner_stack(stack_size),
 		inner_context(nullptr),
-		yield_value(nullptr),
 		started(false)
 	{
 		inner_context = boost::context::make_fcontext(
 				inner_stack.stack_pointer(),
 				stack_size,
-				Generator::static_run);
+				&Generator::static_run);
 	}
 	virtual ~Generator()
 	{
@@ -208,7 +196,6 @@ public:
 		inner_stack(std::move(mve.inner_stack)),
 		inner_context(mve.inner_context),
 		outer_context(mve.outer_context),
-		yield_value(mve.yield_value),
 		started(mve.started)
 	{
 		mve.clear_internal_context();
@@ -220,7 +207,6 @@ public:
 		inner_stack = std::move(mve.inner_stack);
 		inner_context = mve.inner_context;
 		outer_context = mve.outer_context;
-		yield_value = mve.yield_value;
 		started = mve.started;
 
 		mve.clear_internal_context();
@@ -228,11 +214,15 @@ public:
 		return *this;
 	}
 
-	generator_func_type& func_type()
+	generator_func_type& crtp_reference()
 	{
 		return static_cast<generator_func_type&>(*this);
 	}
-	const generator_func_type& func_type() const
+	const generator_func_type& crtp_reference() const
+	{
+		return static_cast<const generator_func_type&>(*this);
+	}
+	const generator_func_type& crtp_const_reference() const
 	{
 		return static_cast<const generator_func_type&>(*this);
 	}
@@ -244,28 +234,16 @@ public:
 	 * value is literally the object passed into yield, so two way communication
 	 * with the generator function is possible by manipulating that value.
 	 */
-	yield_type* next() override
+	yield_type* next()
 	{
 		if(!inner_context)
 			return nullptr;
 
-		yield_value = nullptr;
-		yield_back_internal();
+		yield_ptr_type yielded = yield_back_internal();
 
-		if(!yield_value) cleanup();
-		return yield_value;
+		if(!yielded) cleanup();
+		return yielded;
 	}
 };
-
-#define GENERATOR(NAME, RETURN_TYPE) \
-	class NAME : public Generator<NAME, RETURN_TYPE> \
-	{ \
-	private: \
-		friend class Generator<NAME, RETURN_TYPE>; \
-		void run(); \
-	}; \
-	inline void NAME::run()
-
-#define YIELD this->yield
 
 #endif /* GENERATOR_H_ */

@@ -23,14 +23,14 @@ GeneratorIterator<T> generator_end(T&)
 	return GeneratorIterator<T>();
 }
 
-template<class T>
-GeneratorIterator<GeneratorInterface<T> > begin(GeneratorInterface<T>& gen)
+template<class G, class Y, class A>
+GeneratorIterator<Generator<G, Y, A> > begin(Generator<G, Y, A>& gen)
 {
 	return generator_begin(gen);
 }
 
-template<class T>
-GeneratorIterator<GeneratorInterface<T> > end(GeneratorInterface<T>& gen)
+template<class G, class Y, class A>
+GeneratorIterator<Generator<G, Y, A> > end(Generator<G, Y, A>& gen)
 {
 	return generator_end(gen);
 }

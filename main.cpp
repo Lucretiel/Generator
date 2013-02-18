@@ -58,9 +58,28 @@ void test1()
 	} while(p_v);
 }
 
+class BasicGenerator : public Generator<BasicGenerator, int>
+{
+public:
+	void run()
+	{
+		yield(1);
+		yield(2);
+		yield(3);
+		yield(4);
+	}
+};
+
 void test2()
 {
+	BasicGenerator gen;
+	auto it = begin(gen);
+	auto it2 = end(gen);
 
+	while(it != it2)
+	{
+		std::cout << *it++ << '\n';
+	}
 }
 
 void test3()
