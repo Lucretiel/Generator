@@ -9,68 +9,82 @@
 
 #include <iostream>
 #include <deque>
+#include <string>
 #include "Generator.hpp"
 #include "GeneratorIterator.hpp"
 
-class Verbose
+struct Var
+{
+	std::string x;
+};
+
+class VarGenerator : public Generator<VarGenerator, Var>
 {
 public:
-	Verbose()
+	void run()
 	{
-		std::cout << this << " is being constructed!\n";
-	}
-	~Verbose()
-	{
-		std::cout << this << " is being destructed!\n";
-	}
-	Verbose(const Verbose& other)
-	{
-		std::cout << this << " is being copy constructed from " << &other << "!\n";
-	}
-	Verbose(Verbose&& other)
-	{
-		std::cout << this << " is being move constructed from " << &other << "!\n";
-	}
-	Verbose& operator=(const Verbose& other)
-	{
-		std::cout << this << " is being assigned from " << &other << "!\n";
-		return *this;
-	}
-	Verbose& operator=(Verbose&& other)
-	{
-		std::cout << this << " is being move assigned from " << &other << "!\n";
-		return *this;
+		std::cout << "Generator: begin\n";
+		std::cout << "Creating new var with 'Hello'\n";
+		Var v{"hello"};
+		std::cout << "Contents of var: " << v.x << '\n';
+		std::cout << "Yielding var\n";
+		yield(v);
+		std::cout << "Contents of var: " << v.x << '\n';
+
+		std::cout << "Generator: exit\n";
 	}
 };
 
-GENERATOR(VerboseGenerator, Verbose)
-{
-	std::cout << "Generator: yielding from nameless temp\n";
-	YIELD(Verbose());
-
-	std::cout << "Generator: yielding from stack\n";
-	Verbose verbose;
-	YIELD(verbose);
-}
-
 void test1()
 {
-	std::cout << "test1: two simple yields\n";
-	VerboseGenerator gen;
-	std::cout << "main: yield 1\n";
-	Verbose v1(*gen.next());
-	std::cout << "main: yield 2\n";
-	Verbose v2(*gen.next());
+	VarGenerator gen;
+	Var* p_v;
+
+	std::cout << "test1: begin\n";
+
+	do
+	{
+		std::cout << "Beginning loop\n";
+		p_v = gen.next();
+
+		std::cout << "Got " << p_v << " from next\n";
+		if(p_v)
+		{
+			std::cout << "Not empty! contents: " << p_v->x << '\n';
+			std::cout << "Setting to 'World'\n";
+			p_v->x = "World";
+		}
+		std::cout << "Ending loop\n";
+	} while(p_v);
 }
+
+class BasicGenerator : public Generator<BasicGenerator, int>
+{
+public:
+	void run()
+	{
+		yield(1);
+		yield(2);
+		yield(3);
+		yield(4);
+	}
+};
 
 void test2()
 {
-	std::cout << "test2: new style for loop\n";
-	VerboseGenerator gen;
-	for(Verbose& v : gen)
+	BasicGenerator gen;
+	auto it = begin(gen);
+	auto it2 = end(gen);
+
+	while(it != it2)
 	{
-		std::cout << "test2, for-loop: object is " << &v << "\n";
+		std::cout << *it++ << '\n';
 	}
+}
+
+void test3()
+{
+
 }
 
 int main()
@@ -78,5 +92,7 @@ int main()
 	test1();
 	std::cout << '\n';
 	test2();
+	std::cout << '\n';
+	test3();
 	std::cout << "main: exiting\n";
 }

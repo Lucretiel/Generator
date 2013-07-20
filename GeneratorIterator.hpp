@@ -1,23 +1,40 @@
-#ifndef GENERATORITERATOR_H_
-#define GENERATORITERATOR_H_
+/*
+ * GeneratorIterator.hpp
+ *
+ *  Created on: Feb 15, 2013
+ *      Author: nathan
+ */
 
-#include "GeneratorInterface.hpp"
+#ifndef GENERATORITERATOR_HPP_
+#define GENERATORITERATOR_HPP_
+
 #include "GeneratorIteratorGeneric.hpp"
+#include "Generator.hpp"
 
 template<class T>
-using GeneratorIterator = GeneratorIteratorGeneric<GeneratorInterface<T> >;
-
-//in C++11, these can be used in place of .begin() and .end()
-template<class T>
-GeneratorIterator<T> begin(GeneratorInterface<T>& gen)
+GeneratorIterator<T> generator_begin(T& gen)
 {
-	return ++GeneratorIterator<T>(gen);
+	return GeneratorIterator<T>(gen);
 }
 
 template<class T>
-GeneratorIterator<T> end(GeneratorInterface<T>& gen)
+GeneratorIterator<T> generator_end(T&)
 {
 	return GeneratorIterator<T>();
 }
 
-#endif /* GENERATORITERATOR_H_ */
+template<class G, class Y, class A>
+GeneratorIterator<Generator<G, Y, A> > begin(Generator<G, Y, A>& gen)
+{
+	return generator_begin(gen);
+}
+
+template<class G, class Y, class A>
+GeneratorIterator<Generator<G, Y, A> > end(Generator<G, Y, A>& gen)
+{
+	return generator_end(gen);
+}
+
+
+
+#endif /* GENERATORITERATOR_HPP_ */
