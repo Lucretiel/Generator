@@ -234,7 +234,7 @@ public:
 	 * value is literally the object passed into yield, so two way communication
 	 * with the generator function is possible by manipulating that value.
 	 */
-	yield_type* next()
+	yield_ptr_type next()
 	{
 		if(!inner_context)
 			return nullptr;
