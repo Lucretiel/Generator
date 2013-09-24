@@ -82,9 +82,31 @@ void test2()
 	}
 }
 
+class Fib : public Generator<Fib, int>
+{
+public:
+	void run()
+	{
+		int a = 0;
+		int b = 1;
+		while(true)
+		{
+			yield(a)
+			b = a+b
+			a = b
+		}
+	}
+}
+
 void test3()
 {
-
+	Fib fib;
+	auto it = begin(fib);
+	std::cout << "The first 20 fibonacci numbers:\n";
+	for(int i = 0; i < 20; ++i, ++it)
+	{
+		std::cout << *it << '\n';
+	}
 }
 
 int main()
