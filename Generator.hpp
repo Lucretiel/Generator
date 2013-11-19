@@ -28,12 +28,10 @@ public:
 	//public typedefs. YieldType and the associated pointer.
 	typedef YieldType yield_type;
 	typedef YieldType* yield_ptr_type;
-	typedef GeneratorFunc generator_func_type;
 	typedef GeneratorIterator<Generator> iterator;
 
 private:
 	//Internal typedefs
-	typedef Stack stack_type;
 	typedef boost::context::fcontext_t context_type;
 
 private:
@@ -45,8 +43,8 @@ private:
 
 private:
 	//State!
-	yield_ptr_type current_value;
-	stack_type inner_stack;
+	YieldType* current_value;
+	Stack inner_stack;
 	context_type* inner_context;
 	context_type outer_context;
 
@@ -67,7 +65,7 @@ private:
 	 * and cleans up on an exit. Returns a context to switch back to, on completion,
 	 * to static_run
 	 */
-	context_type* inner_start()
+	context_type* begin_run()
 	{
 		try { crtp_reference().run(); }
 		catch(ImmediateStop&) {}
@@ -83,8 +81,9 @@ private:
 	//Yield implementation
 
 	//Jump out of a generator
-	void exit_generator()
+	void exit_generator(YieldType* yield_ptr)
 	{
+		current_value = yield_ptr;
 		if(static_cast<YieldBack>(
 			boost::context::jump_fcontext(
 				inner_context, &outer_context, 0)) == YieldBack::Stop)
@@ -95,16 +94,10 @@ private:
 protected:
 	//Yields
 
-	/*
-	 * Primary yield function. Yields the address of the object passed. This is
-	 * safe to use in most contexts, because even if an rvalue is passed, it
-	 * will have a lifespan in the yield call, and therefore an address.
-	 */
 	template<class T>
 	void yield(T&& obj)
 	{
-		current_value = &obj;
-		exit_generator();
+		exit_generator(&obj);
 	}
 
 private:
@@ -120,7 +113,6 @@ private:
 			enter_generator(static_cast<intptr_t>(yield_back));
 		if(!inner_context && inner_stack.stack())
 			inner_stack.clear();
-
 	}
 
 public:
@@ -132,9 +124,11 @@ public:
 			stack_size,
 			&Generator::static_run))
 	{
+		//Take no chances with reinterpret cast
 		Generator* self(this);
 		enter_generator(reinterpret_cast<intptr_t>(self));
 	}
+
 	virtual ~Generator()
 	{
 		stop();
@@ -142,27 +136,22 @@ public:
 
 	Generator(const Generator&) =delete;
 	Generator& operator=(const Generator&) =delete;
+	Generator(Generator&&) =delete;
+	Generator& operator=(Generator&&) =delete;
 
-	generator_func_type& crtp_reference()
+	GeneratorFunc& crtp_reference()
 	{
-		return static_cast<generator_func_type&>(*this);
+		return *static_cast<GeneratorFunc*>(this);
 	}
-	const generator_func_type& crtp_reference() const
+	const GeneratorFunc& crtp_reference() const
 	{
-		return static_cast<const generator_func_type&>(*this);
+		return crtp_const_reference();
 	}
-	const generator_func_type& crtp_const_reference() const
+	const GeneratorFunc& crtp_const_reference() const
 	{
-		return static_cast<const generator_func_type&>(*this);
+		return *static_cast<const GeneratorFunc*>(this);
 	}
 
-	/*
-	 * Get the next value from the generator. Returns nullptr when the
-	 * generator is finished. The returned pointer points to an object managed
-	 * in some fashion by generator- do not move it or hold it. The pointed-to
-	 * value is literally the object passed into yield, so two way communication
-	 * with the generator function is possible by manipulating that value.
-	 */
 	void advance()
 	{
 		resume_generator(YieldBack::Resume);
@@ -173,14 +162,24 @@ public:
 		resume_generator(YieldBack::Stop);
 	}
 
-	yield_ptr_type get()
+	YieldType* get()
 	{
 		return current_value;
 	}
 
-	bool stopped()
+	const YieldType* get() const
 	{
-		return !inner_context;
+		return cget();
+	}
+
+	const YieldType* cget() const
+	{
+		return current_value;
+	}
+
+	bool stopped() const
+	{
+		return inner_context == nullptr;
 	}
 
 	iterator begin()
@@ -192,8 +191,6 @@ public:
 	{
 		return iterator();
 	}
-
-
 };
 
 #endif /* GENERATOR_H_ */

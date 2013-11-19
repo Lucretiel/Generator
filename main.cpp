@@ -11,9 +11,31 @@
 #include <deque>
 #include <string>
 #include "Generator.hpp"
-#include "GeneratorIterator.hpp"
+
+class Foo: public Generator<Foo, int>
+{
+public:
+	void run()
+	{
+		yield(1);
+		yield(2);
+		yield(1);
+		yield(3);
+		yield(1);
+		yield(4);
+	}
+
+	Foo():
+		Generator(64)
+	{}
+};
 
 int main()
 {
-	return 0;
+	Foo foo;
+
+	for(int i: foo)
+	{
+		std::cout << i << '\n';
+	}
 }

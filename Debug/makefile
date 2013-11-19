@@ -24,6 +24,9 @@ endif
 ifneq ($(strip $(CPP_DEPS)),)
 -include $(CPP_DEPS)
 endif
+ifneq ($(strip $(BC_DEPS)),)
+-include $(BC_DEPS)
+endif
 ifneq ($(strip $(CXX_DEPS)),)
 -include $(CXX_DEPS)
 endif
@@ -35,22 +38,29 @@ endif
 -include ../makefile.defs
 
 # Add inputs and outputs from these tool invocations to the build variables 
+LLVM_EXECUTABLES += \
+USER_OBJS.exe \
+
 
 # All Target
-all: Generator
+all: Generator secondary-outputs
 
 # Tool invocations
-Generator: $(OBJS) $(USER_OBJS)
+Generator: $(BCS) $(USER_OBJS)
 	@echo 'Building target: $@'
-	@echo 'Invoking: GCC C++ Linker'
-	g++ -L/usr/local/lib/ -o "Generator" $(OBJS) $(USER_OBJS) $(LIBS)
+	@echo 'Invoking: LLVM Clang C++ linker'
+	clang++ -L/usr/lib/gcc/x86_64-linux-gnu/4.7/ -L/usr/lib/gcc/x86_64-linux-gnu/4.7/x32/ -o "Generator" $(BCS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
+USER_OBJS.exe: Generator $(BCS) $(USER_OBJS)
+
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C++_DEPS)$(C_DEPS)$(CC_DEPS)$(CPP_DEPS)$(EXECUTABLES)$(CXX_DEPS)$(C_UPPER_DEPS) Generator
+	-$(RM) $(BCS)$(C++_DEPS)$(C_DEPS)$(CC_DEPS)$(CPP_DEPS)$(BC_DEPS)$(LLVM_EXECUTABLES)$(CXX_DEPS)$(C_UPPER_DEPS)$(LLVM_BC_EXECUTABLES) Generator
 	-@echo ' '
+
+secondary-outputs: $(LLVM_BC_EXECUTABLES)
 
 .PHONY: all clean dependents
 .SECONDARY:
