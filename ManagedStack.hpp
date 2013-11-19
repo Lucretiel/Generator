@@ -10,25 +10,26 @@
 #ifndef MANAGEDSTACK_H_
 #define MANAGEDSTACK_H_
 
-template<class Allocator>
+#include <cstdlib>
+
+template<class Word=char>
 class ManagedStack
 {
 private:
-	typedef Allocator allocator_type;
-	static allocator_type alloc;
 	std::size_t _size;
 	void* _stack;
 
 public:
 	ManagedStack(std::size_t size):
 		_size(size),
-		_stack(alloc.allocate(std::max(size, allocator_type::minimum_stacksize())))
+		_stack(std::calloc(sizeof(Word), size))
 	{}
 
 	~ManagedStack()
 	{
 		clear();
 	}
+
 	//No copying
 	ManagedStack(const ManagedStack&) =delete;
 	ManagedStack& operator=(const ManagedStack&) =delete;
@@ -42,6 +43,8 @@ public:
 	}
 	ManagedStack& operator=(ManagedStack&& mve)
 	{
+		if(&mve == this) return *this;
+
 		clear();
 		_size = mve._size;
 		_stack = mve._stack;
@@ -54,16 +57,13 @@ public:
 	{
 		if(_stack)
 		{
-			alloc.deallocate(_stack, _size);
+			std::free(_stack);
 			_stack = nullptr;
 		}
 	}
 
-	void* stack_pointer() const { return _stack; }
+	void* stack() const { return _stack; }
 	std::size_t size() const { return _size; }
 };
-
-template<class Allocator>
-Allocator ManagedStack<Allocator>::alloc;
 
 #endif /* MANAGEDSTACK_H_ */

@@ -1,40 +1,54 @@
 /*
- * GeneratorIterator.hpp
+ * GeneratorIterator.h
  *
  *  Created on: Feb 15, 2013
  *      Author: nathan
  */
 
-#ifndef GENERATORITERATOR_HPP_
-#define GENERATORITERATOR_HPP_
+#ifndef GENERATORITERATOR_H_
+#define GENERATORITERATOR_H_
 
-#include "GeneratorIteratorGeneric.hpp"
-#include "Generator.hpp"
+#include <boost/iterator/iterator_facade.hpp>
 
-template<class T>
-GeneratorIterator<T> generator_begin(T& gen)
+template<class Generator>
+class GeneratorIterator :
+		public boost::iterator_facade<
+			GeneratorIterator<Generator>,
+			typename Generator::yield_type,
+			std::forward_iterator_tag>
 {
-	return GeneratorIterator<T>(gen);
-}
+public:
+	typedef Generator generator_type;
+	typedef typename generator_type::yield_type yield_type;
 
-template<class T>
-GeneratorIterator<T> generator_end(T&)
-{
-	return GeneratorIterator<T>();
-}
+	typedef typename GeneratorIterator::value_type value_type;
+	typedef typename GeneratorIterator::reference reference;
 
-template<class G, class Y, class A>
-GeneratorIterator<Generator<G, Y, A> > begin(Generator<G, Y, A>& gen)
-{
-	return generator_begin(gen);
-}
+private:
+	generator_type* gen;
 
-template<class G, class Y, class A>
-GeneratorIterator<Generator<G, Y, A> > end(Generator<G, Y, A>& gen)
-{
-	return generator_end(gen);
-}
+	friend class boost::iterator_core_access;
 
+	void increment()
+	{
+		gen->advance();
+	}
 
+	reference dereference() const
+	{
+		return *gen->get();
+	}
 
-#endif /* GENERATORITERATOR_HPP_ */
+	bool equal(const GeneratorIterator& rhs) const
+	{
+		return gen == rhs.gen;
+	}
+
+public:
+
+	GeneratorIterator(Generator* gen=nullptr):
+		gen(gen)
+	{}
+};
+
+#endif /* GENERATORITERATOR_H_ */
