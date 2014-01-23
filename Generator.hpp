@@ -8,6 +8,7 @@
 #ifndef GENERATOR_H_
 #define GENERATOR_H_
 
+#include <stdexcept>
 #include <boost/context/all.hpp>
 
 //TODO: Fix the OH GOD IT'S ALL ONE FILE thing
@@ -21,7 +22,7 @@
 template<
 	class GeneratorFunc,
 	class YieldType,
-	class Stack=ManagedStack<char> >
+	class Stack=ManagedStack>
 class Generator
 {
 public:
@@ -31,13 +32,13 @@ public:
 	typedef GeneratorIterator<Generator> iterator;
 
 private:
-	//Internal typedefs
+	//Internal typedefs and types
 	typedef boost::context::fcontext_t context_type;
-
-private:
+	
 	//Return states from a next into a yield
 	enum class YieldBack : intptr_t {Resume, Stop};
 
+protected:
 	//thrown from yield() when the context must be immediately destroyed.
 	class ImmediateStop {};
 
@@ -79,43 +80,67 @@ private:
 
 private:
 	//Yield implementation
-
-	//Jump out of a generator
-	void exit_generator(YieldType* yield_ptr)
+	
+	//core wrapper for jump_fcontext call out of the generator
+	intptr_t jump_out_of_generator(intptr_t val)
 	{
-		current_value = yield_ptr;
-		if(static_cast<YieldBack>(
-			boost::context::jump_fcontext(
-				inner_context, &outer_context, 0)) == YieldBack::Stop)
+		return boost::context::jump_fcontext(inner_context, &outer_context, val);
+	}
+
+	//Jump out of a generator. If it receives a stop instruction, throw ImmediateStop.
+	void exit_generator()
+	{
+		if(static_cast<YieldBack>(jump_out_of_generator(0)) == YieldBack::Stop)
 		{
 			throw ImmediateStop();
 		}
 	}
+	
 protected:
 	//Yields
 
 	template<class T>
 	void yield(T&& obj)
 	{
-		exit_generator(&obj);
+		current_value = &obk;
+		exit_generator();
 	}
 
 private:
 	//Functions relating to managing the generator context (switching into it, etc)
-
-	void enter_generator(intptr_t val)
+	
+	//core wrapper for jump_fcontext call into the generator
+	intptr_t jump_into_generator(intptr_t val)
 	{
-		boost::context::jump_fcontext(&outer_context, inner_context, val);
+		return boost::context::jump_fcontext(&outer_context, inner_context, val);
 	}
+	
+	//Checked jump into generator
+	void enter_generator(initptr_t val)
+	{
+		//If the context exists, enter it
+		if(inner_context)
+			jump_into_generator(val);
+		//If the context no longer exists, clear the generator.
+		if(!inner_context)
+			clear_generator_context();
+	}
+	
+	//Resume the generator with a return state
 	void resume_generator(YieldBack yield_back)
 	{
-		if(inner_context)
-			enter_generator(static_cast<intptr_t>(yield_back));
-		if(!inner_context && inner_stack.stack())
-			inner_stack.clear();
+		enter_generator(static_cast<intptr_t>(yield_back));
 	}
-
+	
+	//Wipe the generator context. UNSAFE
+	void clear_generator_context()
+	{
+		current_value = nullptr;
+		inner_context = nullptr;
+		inner_stack.clear();
+	}
 public:
+	//TODO: fix to ensure stack_size is a byte count, not a word count
 	Generator(unsigned stack_size):
 		current_value(nullptr),
 		inner_stack(stack_size),
@@ -124,12 +149,10 @@ public:
 			stack_size,
 			&Generator::static_run))
 	{
-		//Take no chances with reinterpret cast
-		Generator* self(this);
-		enter_generator(reinterpret_cast<intptr_t>(self));
+		enter_generator(reinterpret_cast<intptr_t>(this));
 	}
 
-	virtual ~Generator()
+	~Generator()
 	{
 		stop();
 	}
@@ -160,6 +183,7 @@ public:
 	void stop()
 	{
 		resume_generator(YieldBack::Stop);
+		clear_generator_context();
 	}
 
 	YieldType* get()
