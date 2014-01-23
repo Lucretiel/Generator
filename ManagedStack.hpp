@@ -12,7 +12,6 @@
 
 #include <cstdlib>
 
-template<class Word=char>
 class ManagedStack
 {
 private:
@@ -22,7 +21,7 @@ private:
 public:
 	ManagedStack(std::size_t size):
 		_size(size),
-		_stack(std::calloc(sizeof(Word), size))
+		_stack(std::malloc(size))
 	{}
 
 	~ManagedStack()
