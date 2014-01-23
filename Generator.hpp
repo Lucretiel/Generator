@@ -8,7 +8,6 @@
 #ifndef GENERATOR_H_
 #define GENERATOR_H_
 
-#include <stdexcept>
 #include <boost/context/all.hpp>
 
 //TODO: Fix the OH GOD IT'S ALL ONE FILE thing
@@ -34,7 +33,7 @@ public:
 private:
 	//Internal typedefs and types
 	typedef boost::context::fcontext_t context_type;
-	
+
 	//Return states from a next into a yield
 	enum class YieldBack : intptr_t {Resume, Stop};
 
@@ -80,7 +79,7 @@ private:
 
 private:
 	//Yield implementation
-	
+
 	//core wrapper for jump_fcontext call out of the generator
 	intptr_t jump_out_of_generator(intptr_t val)
 	{
@@ -95,7 +94,7 @@ private:
 			throw ImmediateStop();
 		}
 	}
-	
+
 protected:
 	//Yields
 
@@ -108,13 +107,13 @@ protected:
 
 private:
 	//Functions relating to managing the generator context (switching into it, etc)
-	
+
 	//core wrapper for jump_fcontext call into the generator
 	intptr_t jump_into_generator(intptr_t val)
 	{
 		return boost::context::jump_fcontext(&outer_context, inner_context, val);
 	}
-	
+
 	//Checked jump into generator
 	void enter_generator(initptr_t val)
 	{
@@ -125,13 +124,13 @@ private:
 		if(!inner_context)
 			clear_generator_context();
 	}
-	
+
 	//Resume the generator with a return state
 	void resume_generator(YieldBack yield_back)
 	{
 		enter_generator(static_cast<intptr_t>(yield_back));
 	}
-	
+
 	//Wipe the generator context. UNSAFE
 	void clear_generator_context()
 	{
