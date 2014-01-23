@@ -15,7 +15,7 @@ class GeneratorIterator :
 		public boost::iterator_facade<
 			GeneratorIterator<Generator>,
 			typename Generator::yield_type,
-			std::forward_iterator_tag>
+			boost::forward_traversal_tag>
 {
 public:
 	typedef Generator generator_type;
@@ -31,7 +31,12 @@ private:
 
 	void increment()
 	{
-		gen->advance();
+		if(gen)
+		{
+			gen->advance();
+			if(gen->stopped())
+				gen = nullptr;
+		}
 	}
 
 	reference dereference() const
