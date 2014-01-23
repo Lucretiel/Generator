@@ -158,8 +158,9 @@ public:
 
 	Generator(const Generator&) =delete;
 	Generator& operator=(const Generator&) =delete;
-	Generator(Generator&&) =delete;
-	Generator& operator=(Generator&&) =delete;
+
+	Generator(Generator&&) =default;
+	Generator& operator=(Generator&&) =default;
 
 	GeneratorFunc& crtp_reference()
 	{
