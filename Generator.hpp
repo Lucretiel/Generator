@@ -34,8 +34,11 @@ private:
 	//Internal typedefs and types
 	typedef boost::context::fcontext_t context_type;
 
-	//Return states from a next into a yield
+	//Return states to give to the generator
 	enum class YieldBack : intptr_t {Resume, Stop};
+
+	//Return states to get from the generator
+	enum class GeneratorState : intptr_t {Continue, Done};
 
 protected:
 	//thrown from yield() when the context must be immediately destroyed.
@@ -54,42 +57,45 @@ private:
 	//initiator function to fit into make_fcontext
 	static void static_run(intptr_t p)
 	{
-		context_type* outer = reinterpret_cast<Generator*>(p)->begin_run();
-		context_type inner;
+		Generator* self = reinterpret_cast<Generator*>(p);
 
-		boost::context::jump_fcontext(&inner, outer, 0);
+		context_type* inner(self->inner_context);
+		context_type* outer(&self->outer_context);
+
+		self->begin_run();
+
+		boost::context::jump_fcontext(inner, outer,
+			static_cast<intptr_t>(GeneratorState::Done));
 	}
 
 	/*
-	 * Primary wrapper. Launches context, handles ImmediateStop exceptions,
-	 * and cleans up on an exit. Returns a context to switch back to, on completion,
-	 * to static_run
+	 * Primary wrapper. Launches function, handles ImmediateStop exceptions,
+	 * and cleans up on an exit.
 	 */
-	context_type* begin_run()
+	void begin_run()
 	{
 		try { crtp_reference().run(); }
 		catch(ImmediateStop&) {}
 
-		//Point of no return
 		current_value = nullptr;
-		inner_context = nullptr;
-
-		return &outer_context;
 	}
 
 private:
 	//Yield implementation
 
 	//core wrapper for jump_fcontext call out of the generator
-	intptr_t jump_out_of_generator(intptr_t val)
+	YieldBack jump_out_of_generator(GeneratorState state)
 	{
-		return boost::context::jump_fcontext(inner_context, &outer_context, val);
+		return static_cast<YieldBack>(
+			boost::context::jump_fcontext(
+				inner_context, &outer_context, static_cast<intptr_t>(
+					state)));
 	}
 
 	//Jump out of a generator. If it receives a stop instruction, throw ImmediateStop.
 	void exit_generator()
 	{
-		if(static_cast<YieldBack>(jump_out_of_generator(0)) == YieldBack::Stop)
+		if(jump_out_of_generator(GeneratorState::Continue) == YieldBack::Stop)
 		{
 			throw ImmediateStop();
 		}
@@ -101,7 +107,7 @@ protected:
 	template<class T>
 	void yield(T&& obj)
 	{
-		current_value = &obk;
+		current_value = &obj;
 		exit_generator();
 	}
 
@@ -109,23 +115,28 @@ private:
 	//Functions relating to managing the generator context (switching into it, etc)
 
 	//core wrapper for jump_fcontext call into the generator
-	intptr_t jump_into_generator(intptr_t val)
+	GeneratorState jump_into_generator(intptr_t val)
 	{
-		return boost::context::jump_fcontext(&outer_context, inner_context, val);
+		return static_cast<GeneratorState>(
+			boost::context::jump_fcontext(
+				&outer_context, inner_context, val));
 	}
 
 	//Checked jump into generator
-	void enter_generator(initptr_t val)
+	void enter_generator(intptr_t val)
 	{
 		//If the context exists, enter it
 		if(inner_context)
-			jump_into_generator(val);
-		//If the context no longer exists, clear the generator.
-		if(!inner_context)
-			clear_generator_context();
+		{
+			//If the generator finishes, clean it up
+			if(jump_into_generator(val) == GeneratorState::Done)
+			{
+				clear_generator_context();
+			}
+		}
 	}
 
-	//Resume the generator with a return state
+	//Checked jump into the generator with a return state
 	void resume_generator(YieldBack yield_back)
 	{
 		enter_generator(static_cast<intptr_t>(yield_back));
