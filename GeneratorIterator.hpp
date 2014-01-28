@@ -15,7 +15,7 @@ class GeneratorIterator :
 		public boost::iterator_facade<
 			GeneratorIterator<Generator>,
 			typename Generator::yield_type,
-			boost::forward_traversal_tag>
+			boost::single_pass_traversal_tag>
 {
 public:
 	typedef Generator generator_type;
@@ -38,6 +38,10 @@ private:
 				gen = nullptr;
 		}
 	}
+	/*
+	 * Note that this behavior for increment invalidates old iterators, meaning
+	 * that *it++ doesn't work.
+	 */
 
 	reference dereference() const
 	{
