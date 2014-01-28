@@ -4,25 +4,29 @@
  *  Created on: Feb 8, 2013
  *      Author: nathan
  *
- *  Simple class to add RAII to a stack allocator.
+ *  Simple to manage an allocated stack.
  */
 
 #ifndef MANAGEDSTACK_H_
 #define MANAGEDSTACK_H_
 
 #include <cstdlib>
+#include <stdexcept>
 
 class ManagedStack
 {
 private:
 	std::size_t _size;
-	void* _stack;
+	char* _stack;
 
 public:
-	ManagedStack(std::size_t size):
+	explicit ManagedStack(std::size_t size):
 		_size(size),
-		_stack(std::malloc(size))
-	{}
+		_stack(static_cast<char*>(std::calloc(size, sizeof(char))))
+	{
+		if(!_stack) throw std::bad_alloc();
+		_stack += _size;
+	}
 
 	~ManagedStack()
 	{
@@ -56,7 +60,7 @@ public:
 	{
 		if(_stack)
 		{
-			std::free(_stack);
+			std::free(_stack - _size);
 			_stack = nullptr;
 		}
 	}
