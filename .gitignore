@@ -1,7 +1,26 @@
-Release/*
-Debug/*
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
 
-!*.mk
-!makefile
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
 
-*~
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Eclipse data
+Debug/
+Release/
+.cproject
