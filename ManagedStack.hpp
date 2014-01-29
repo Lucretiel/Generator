@@ -7,8 +7,7 @@
  *  Simple to manage an allocated stack.
  */
 
-#ifndef MANAGEDSTACK_H_
-#define MANAGEDSTACK_H_
+#pragma once
 
 #include <cstdlib>
 #include <stdexcept>
@@ -20,8 +19,10 @@ private:
 	char* _stack;
 
 public:
-	explicit ManagedStack(std::size_t size):
-		_size(size),
+	const static std::size_t min_size = 4096;
+
+	explicit ManagedStack(std::size_t size = min_size):
+		_size(size > min_size ? size : min_size),
 		_stack(static_cast<char*>(std::calloc(size, sizeof(char))))
 	{
 		if(!_stack) throw std::bad_alloc();
@@ -68,5 +69,3 @@ public:
 	void* stack() const { return _stack; }
 	std::size_t size() const { return _size; }
 };
-
-#endif /* MANAGEDSTACK_H_ */
