@@ -10,11 +10,12 @@
 #include <iostream>
 #include <deque>
 #include <string>
+
 #include "Generator.hpp"
 
 class Foo: public Generator<Foo, int>
 {
-public:
+	friend class Generator::GeneratorCoreAccess;
 	void run()
 	{
 		yield(1);
@@ -24,10 +25,6 @@ public:
 		yield(1);
 		yield(4);
 	}
-
-	Foo():
-		Generator(64)
-	{}
 };
 
 int main()

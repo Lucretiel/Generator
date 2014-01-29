@@ -5,15 +5,11 @@
  *      Author: nathan
  */
 
-#ifndef GENERATOR_H_
-#define GENERATOR_H_
+#pragma once
 
 #include <boost/context/all.hpp>
 
-//TODO: Fix the OH GOD IT'S ALL ONE FILE thing
-//TODO: No seriously we need some separation of responsibility up in this bitch
 //TODO: add namespace
-//TODO: Maybe a few less casts
 
 #include "ManagedStack.hpp"
 #include "GeneratorIterator.hpp"
@@ -24,15 +20,10 @@ template<
 	class Stack=ManagedStack>
 class Generator
 {
-public:
-	//public typedefs. YieldType and the associated pointer.
-	typedef YieldType yield_type;
-	typedef YieldType* yield_ptr_type;
-	typedef GeneratorIterator<Generator> iterator;
-
 private:
 	//Internal typedefs and types
 	typedef boost::context::fcontext_t context_type;
+	typedef GeneratorFunc crtp_type;
 
 	//Return states to give to the generator
 	enum class YieldBack : intptr_t {Resume, Stop};
@@ -40,14 +31,30 @@ private:
 	//Return states to get from the generator
 	enum class GeneratorState : intptr_t {Continue, Done};
 
-protected:
 	//thrown from yield() when the context must be immediately destroyed.
 	class ImmediateStop {};
 
+public:
+	//public typedefs. YieldType, the associated pointer, and the iterator
+	typedef YieldType yield_type;
+	typedef YieldType* yield_ptr_type;
+	typedef GeneratorIterator<Generator> iterator;
+
+	class GeneratorCoreAccess
+	{
+	private:
+		friend class Generator;
+		static void run(crtp_type& func)
+		{
+			func.run();
+		}
+	};
+
+
 private:
 	//State!
-	YieldType* current_value;
 	Stack inner_stack;
+	YieldType* current_value;
 	context_type* inner_context;
 	context_type outer_context;
 
@@ -57,15 +64,7 @@ private:
 	//initiator function to fit into make_fcontext
 	static void static_run(intptr_t p)
 	{
-		Generator* self = reinterpret_cast<Generator*>(p);
-
-		context_type* inner(self->inner_context);
-		context_type* outer(&self->outer_context);
-
-		self->begin_run();
-
-		boost::context::jump_fcontext(inner, outer,
-			static_cast<intptr_t>(GeneratorState::Done));
+		reinterpret_cast<Generator*>(p)->begin_run();
 	}
 
 	/*
@@ -74,10 +73,11 @@ private:
 	 */
 	void begin_run()
 	{
-		try { crtp_reference().run(); }
+		try { GeneratorCoreAccess::run(crtp_reference()); }
 		catch(ImmediateStop&) {}
 
 		current_value = nullptr;
+		exit_generator(GeneratorState::Done);
 	}
 
 private:
@@ -93,9 +93,9 @@ private:
 	}
 
 	//Jump out of a generator. If it receives a stop instruction, throw ImmediateStop.
-	void exit_generator()
+	void exit_generator(GeneratorState state)
 	{
-		if(jump_out_of_generator(GeneratorState::Continue) == YieldBack::Stop)
+		if(jump_out_of_generator(state) == YieldBack::Stop)
 		{
 			throw ImmediateStop();
 		}
@@ -108,8 +108,10 @@ protected:
 	void yield(T&& obj)
 	{
 		current_value = &obj;
-		exit_generator();
+		exit_generator(GeneratorState::Continue);
 	}
+
+	//TODO: yield_from(Generator) that manipulates the context switches
 
 private:
 	//Functions relating to managing the generator context (switching into it, etc)
@@ -150,13 +152,12 @@ private:
 		inner_stack.clear();
 	}
 public:
-	//TODO: fix to ensure stack_size is a byte count, not a word count
-	Generator(unsigned stack_size):
-		current_value(nullptr),
+	Generator(std::size_t stack_size = Stack::min_size):
 		inner_stack(stack_size),
+		current_value(nullptr),
 		inner_context(boost::context::make_fcontext(
 			inner_stack.stack(),
-			stack_size,
+			inner_stack.size(),
 			&Generator::static_run))
 	{
 		enter_generator(reinterpret_cast<intptr_t>(this));
@@ -175,7 +176,7 @@ public:
 
 	GeneratorFunc& crtp_reference()
 	{
-		return *static_cast<GeneratorFunc*>(this);
+		return *static_cast<crtp_type*>(this);
 	}
 	const GeneratorFunc& crtp_reference() const
 	{
@@ -183,7 +184,7 @@ public:
 	}
 	const GeneratorFunc& crtp_const_reference() const
 	{
-		return *static_cast<const GeneratorFunc*>(this);
+		return *static_cast<const crtp_type*>(this);
 	}
 
 	void advance()
@@ -227,5 +228,3 @@ public:
 		return iterator();
 	}
 };
-
-#endif /* GENERATOR_H_ */
