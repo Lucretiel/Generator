@@ -7,22 +7,81 @@
 
 #pragma once
 
+#include <cstdlib>
+#include <stdexcept>
+
 #include <boost/context/all.hpp>
 #include <boost/iterator/iterator_facade.hpp>
-
-#include "ManagedStack.hpp"
 
 namespace generator
 {
 namespace detail
 {
 
-}
+class ScopedStack
+{
+private:
+	std::size_t _size;
+	char* _stack;
+
+public:
+	//TODO: pick this value more intelligently
+	const static std::size_t min_size = 4096;
+
+	explicit ScopedStack(std::size_t size = min_size):
+		_size(size > min_size ? size : min_size),
+		_stack(static_cast<char*>(std::calloc(size, sizeof(char))))
+	{
+		if(!_stack) throw std::bad_alloc();
+		_stack += _size;
+	}
+
+	~ScopedStack()
+	{
+		clear();
+	}
+
+	//No copying
+	ScopedStack(const ScopedStack&) =delete;
+	ScopedStack& operator=(const ScopedStack&) =delete;
+
+	//Moving
+	ScopedStack(ScopedStack&& mve):
+		_size(mve._size),
+		_stack(mve._stack)
+	{
+		mve._stack = nullptr;
+	}
+	ScopedStack& operator=(ScopedStack&& mve)
+	{
+		if(&mve == this) return *this;
+
+		clear();
+		_size = mve._size;
+		_stack = mve._stack;
+
+		mve._stack = nullptr;
+		return *this;
+	}
+
+	void clear()
+	{
+		if(_stack)
+		{
+			std::free(_stack - _size);
+			_stack = nullptr;
+		}
+	}
+
+	void* stack() const { return _stack; }
+	std::size_t size() const { return _size; }
+}; // class ManagedStack
+
+} //namespace detail
 
 template<
 	class GeneratorFunc,
-	class YieldType,
-	class Stack=ManagedStack>
+	class YieldType>
 class Generator
 {
 private:
@@ -98,7 +157,7 @@ public:
 
 private:
 	//State!
-	Stack inner_stack;
+	detail::ScopedStack inner_stack;
 	YieldType* current_value;
 	context_type* inner_context;
 	context_type outer_context;
@@ -197,7 +256,7 @@ private:
 		inner_stack.clear();
 	}
 public:
-	Generator(std::size_t stack_size = Stack::min_size):
+	Generator(std::size_t stack_size = detail::ScopedStack::min_size):
 		inner_stack(stack_size),
 		current_value(nullptr),
 		inner_context(boost::context::make_fcontext(
