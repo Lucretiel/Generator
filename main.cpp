@@ -13,25 +13,25 @@
 
 #include "Generator.hpp"
 
-class Foo: public Generator<Foo, int>
+class Foo: public generator::Generator<Foo, int>
 {
 	friend class Generator::GeneratorCoreAccess;
+
+	void countdown(int x)
+	{
+		for(; x > 0; --x)
+			yield(x);
+	}
 	void run()
 	{
-		yield(1);
-		yield(2);
-		yield(1);
-		yield(3);
-		yield(1);
-		yield(4);
+		countdown(3);
+		countdown(5);
 	}
 };
 
 int main()
 {
-	Foo foo;
-
-	for(int i: foo)
+	for(int i: Foo())
 	{
 		std::cout << i << '\n';
 	}

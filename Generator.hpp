@@ -8,11 +8,16 @@
 #pragma once
 
 #include <boost/context/all.hpp>
-
-//TODO: add namespace
+#include <boost/iterator/iterator_facade.hpp>
 
 #include "ManagedStack.hpp"
-#include "GeneratorIterator.hpp"
+
+namespace generator
+{
+namespace detail
+{
+
+}
 
 template<
 	class GeneratorFunc,
@@ -34,12 +39,53 @@ private:
 	//thrown from yield() when the context must be immediately destroyed.
 	class ImmediateStop {};
 
+	//Iterator
+	class GeneratorIterator :
+		public boost::iterator_facade<
+			GeneratorIterator, YieldType,
+			boost::single_pass_traversal_tag>
+	{
+	public:
+		typedef Generator generator_type;
+
+	private:
+		Generator* gen;
+
+		friend class boost::iterator_core_access;
+
+		void increment()
+		{
+			if(gen)
+			{
+				gen->advance();
+				if(gen->stopped())
+					gen = nullptr;
+			}
+		}
+
+		YieldType& dereference() const
+		{
+			return *gen->get();
+		}
+
+		bool equal(const GeneratorIterator& rhs) const
+		{
+			return gen == rhs.gen;
+		}
+
+	public:
+		GeneratorIterator(Generator* gen=nullptr):
+			gen(gen)
+		{}
+	};
+
 public:
 	//public typedefs. YieldType, the associated pointer, and the iterator
 	typedef YieldType yield_type;
 	typedef YieldType* yield_ptr_type;
-	typedef GeneratorIterator<Generator> iterator;
+	typedef GeneratorIterator iterator;
 
+	//GeneratorCoreAccess. Make this a friend to have a private run()
 	class GeneratorCoreAccess
 	{
 	private:
@@ -49,7 +95,6 @@ public:
 			func.run();
 		}
 	};
-
 
 private:
 	//State!
@@ -227,4 +272,5 @@ public:
 	{
 		return iterator();
 	}
-};
+}; // class Generator
+} // namespace generator
