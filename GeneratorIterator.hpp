@@ -38,10 +38,6 @@ private:
 				gen = nullptr;
 		}
 	}
-	/*
-	 * Note that this behavior for increment invalidates old iterators, meaning
-	 * that *it++ doesn't work.
-	 */
 
 	reference dereference() const
 	{
