@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <stdexcept>
+#include <utility>
 
 #include <boost/context/all.hpp>
 #include <boost/iterator/iterator_facade.hpp>
@@ -18,6 +19,7 @@ namespace generator
 namespace detail
 {
 
+//Simple class to add RAII semantics to stack allocation
 class ScopedStack
 {
 private:
@@ -26,11 +28,13 @@ private:
 
 public:
 	//TODO: pick this value more intelligently
-	const static std::size_t min_size = 4096;
+	const static std::size_t min_size = 1024 * 8; //8KB, 2 pages on my system
 
-	explicit ScopedStack(std::size_t size = min_size):
+	//TODO: allocate at page boundary
+	//TODO: guard page
+	explicit ScopedStack(std::size_t size = 0):
 		_size(size > min_size ? size : min_size),
-		_stack(static_cast<char*>(std::calloc(size, sizeof(char))))
+		_stack(static_cast<char*>(std::calloc(_size, sizeof(char))))
 	{
 		if(!_stack) throw std::bad_alloc();
 		_stack += _size;
@@ -66,28 +70,56 @@ public:
 
 	void clear()
 	{
-		if(_stack)
-		{
-			std::free(_stack - _size);
-			_stack = nullptr;
-		}
+		std::free(_stack - _size);
+		_stack = nullptr;
 	}
 
 	void* stack() const { return _stack; }
 	std::size_t size() const { return _size; }
 }; // class ManagedStack
 
+/*
+ * Needed for OwningGenerator to ensure correct order of initialization. To keep
+ * the OwningGenerator implementation simple, it inherits from Generator-
+ * otherwise we'd need to reimplement Generator's public interface. However,
+ * base classes are always initialzied before members, and we need to make sure
+ * the owned functor is initialized before the generator.
+ */
+template<class T>
+class Holder
+{
+public:
+	T object;
+
+	explicit Holder(T& obj):
+			object(obj)
+	{}
+
+	explicit Holder(T&& obj):
+			object(std::move(obj))
+	{}
+
+	Holder(Holder&&) =default;
+	Holder& operator=(Holder&&) =default;
+}; //class Holder
+
 } //namespace detail
 
-template<
-	class GeneratorFunc,
-	class YieldType>
+//TODO: const GeneratorFunc overloads
+/*
+ * Standard Generator. Creates and manages a context. Execution of this context
+ * can be paused and resumed, and the context can send values by reference out
+ * of the generator.
+ *
+ * Generators do NOT own the client functor that is passed to it. This is to
+ * allow all generators
+ */
+template<class YieldType>
 class Generator
 {
 private:
 	//Internal typedefs and types
 	typedef boost::context::fcontext_t context_type;
-	typedef GeneratorFunc crtp_type;
 
 	//Return states to give to the generator
 	enum class YieldBack : intptr_t {Resume, Stop};
@@ -98,11 +130,15 @@ private:
 	//thrown from yield() when the context must be immediately destroyed.
 	class ImmediateStop {};
 
+public:
+	//public typedefs and types.
+	typedef YieldType yield_type;
+	typedef YieldType* yield_ptr_type;
+
 	//Iterator
-	class GeneratorIterator :
+	class iterator :
 		public boost::iterator_facade<
-			GeneratorIterator, YieldType,
-			boost::single_pass_traversal_tag>
+			iterator, YieldType, boost::single_pass_traversal_tag>
 	{
 	public:
 		typedef Generator generator_type;
@@ -127,31 +163,50 @@ private:
 			return *gen->get();
 		}
 
-		bool equal(const GeneratorIterator& rhs) const
+		bool equal(const iterator& rhs) const
 		{
 			return gen == rhs.gen;
 		}
 
 	public:
-		GeneratorIterator(Generator* gen=nullptr):
+		iterator(Generator* gen=nullptr):
 			gen(gen)
 		{}
 	};
 
-public:
-	//public typedefs. YieldType, the associated pointer, and the iterator
-	typedef YieldType yield_type;
-	typedef YieldType* yield_ptr_type;
-	typedef GeneratorIterator iterator;
+	//Yielder. Passed into contexts to enable yielding
+	friend class Yielder;
 
-	//GeneratorCoreAccess. Make this a friend to have a private run()
-	class GeneratorCoreAccess
+	class Yield
 	{
 	private:
 		friend class Generator;
-		static void run(crtp_type& func)
+
+		//TODO: determine if a reference is appropriate here
+		Generator* gen;
+
+		explicit Yield(Generator* generator):
+			gen(generator)
+		{}
+
+	public:
+		//Yield an object
+		template<class T>
+		void operator()(T&& object)
 		{
-			func.run();
+			gen->yield(&object);
+		}
+
+		//
+		void exit()
+		{
+			gen->exit_generator(GeneratorState::Done);
+		}
+
+		//SAFE. will throw an exception that will be caught by the base of the context
+		void done()
+		{
+			throw ImmediateStop();
 		}
 	};
 
@@ -165,19 +220,30 @@ private:
 private:
 	//Wrappers for launching the generator
 
-	//initiator function to fit into make_fcontext
-	static void static_run(intptr_t p)
+	//Data to pass to the context
+	template<class GeneratorFunc>
+	struct ContextBootstrap
 	{
-		reinterpret_cast<Generator*>(p)->begin_run();
+		Generator* self;
+		GeneratorFunc* func;
+	};
+
+	//initiator function to fit into make_fcontext
+	template<class GeneratorFunc>
+	static void static_context_base(intptr_t p)
+	{
+		auto bootstrap = reinterpret_cast<ContextBootstrap<GeneratorFunc>*>(p);
+		bootstrap->self->context_base(bootstrap->func);
 	}
 
 	/*
 	 * Primary wrapper. Launches function, handles ImmediateStop exceptions,
 	 * and cleans up on an exit.
 	 */
-	void begin_run()
+	template<class GeneratorFunc>
+	void context_base(GeneratorFunc* func)
 	{
-		try { GeneratorCoreAccess::run(crtp_reference()); }
+		try { (*func)(Yield(this)); }
 		catch(ImmediateStop&) {}
 
 		current_value = nullptr;
@@ -185,7 +251,7 @@ private:
 	}
 
 private:
-	//Yield implementation
+	//Context Exit
 
 	//core wrapper for jump_fcontext call out of the generator
 	YieldBack jump_out_of_generator(GeneratorState state)
@@ -196,7 +262,7 @@ private:
 					state)));
 	}
 
-	//Jump out of a generator. If it receives a stop instruction, throw ImmediateStop.
+	//Jump out of a generator. Checks for a stop instruction
 	void exit_generator(GeneratorState state)
 	{
 		if(jump_out_of_generator(state) == YieldBack::Stop)
@@ -205,20 +271,15 @@ private:
 		}
 	}
 
-protected:
-	//Yields
-
-	template<class T>
-	void yield(T&& obj)
+	//Collect value and exit
+	void yield(YieldType* obj)
 	{
-		current_value = &obj;
+		current_value = obj;
 		exit_generator(GeneratorState::Continue);
 	}
 
-	//TODO: yield_from(Generator) that manipulates the context switches
-
 private:
-	//Functions relating to managing the generator context (switching into it, etc)
+	//Context Entry
 
 	//core wrapper for jump_fcontext call into the generator
 	GeneratorState jump_into_generator(intptr_t val)
@@ -256,15 +317,18 @@ private:
 		inner_stack.clear();
 	}
 public:
-	Generator(std::size_t stack_size = detail::ScopedStack::min_size):
+	template<class GeneratorFunc>
+	explicit Generator(GeneratorFunc& func, std::size_t stack_size = 0):
+
 		inner_stack(stack_size),
 		current_value(nullptr),
 		inner_context(boost::context::make_fcontext(
 			inner_stack.stack(),
 			inner_stack.size(),
-			&Generator::static_run))
+			&Generator::static_context_base<GeneratorFunc>))
 	{
-		enter_generator(reinterpret_cast<intptr_t>(this));
+		ContextBootstrap<GeneratorFunc> bootstrap = {this, &func};
+		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
 	}
 
 	~Generator()
@@ -278,27 +342,26 @@ public:
 	Generator(Generator&&) =default;
 	Generator& operator=(Generator&&) =default;
 
-	GeneratorFunc& crtp_reference()
-	{
-		return *static_cast<crtp_type*>(this);
-	}
-	const GeneratorFunc& crtp_reference() const
-	{
-		return crtp_const_reference();
-	}
-	const GeneratorFunc& crtp_const_reference() const
-	{
-		return *static_cast<const crtp_type*>(this);
-	}
-
 	void advance()
 	{
 		resume_generator(YieldBack::Resume);
 	}
 
+	YieldType* next()
+	{
+		advance();
+		return get();
+	}
+
 	void stop()
 	{
 		resume_generator(YieldBack::Stop);
+
+		/*
+		 * Normally resume_generator will handle this. However, if the context
+		 * is naughty and prevents the exception from reaching the base, we
+		 * still have to kill it.
+		 */
 		clear_generator_context();
 	}
 
@@ -332,4 +395,41 @@ public:
 		return iterator();
 	}
 }; // class Generator
+
+/*
+ * OwningGenerator is a generator variant that owns the Functor it uses.
+ */
+template<class YieldType, class GeneratorFunc>
+class OwningGenerator:
+		private detail::Holder<GeneratorFunc>,
+		public Generator<YieldType>
+{
+public:
+	OwningGenerator(GeneratorFunc& func, std::size_t stack_size = 0):
+		detail::Holder<GeneratorFunc>(func),
+		Generator<YieldType>(this->object, stack_size)
+	{}
+
+	OwningGenerator(GeneratorFunc&& func, std::size_t stack_size = 0):
+		detail::Holder<GeneratorFunc>(std::move(func)),
+		Generator<YieldType>(this->object, stack_size)
+	{}
+
+	OwningGenerator(const OwningGenerator&) =delete;
+	OwningGenerator(OwningGenerator&& mve) =default;
+	OwningGenerator& operator=(const OwningGenerator&) =delete;
+	OwningGenerator& operator=(OwningGenerator&&) =default;
+}; //class OwningGenerator
+
+template<class YieldType>
+using Yield = typename Generator<YieldType>::Yield;
+
+template<class YieldType, class GeneratorFunc>
+OwningGenerator<YieldType, GeneratorFunc> make_owning_generator(
+		GeneratorFunc&& func, std::size_t stack_size = 0)
+{
+	return OwningGenerator<YieldType, GeneratorFunc>(
+		std::forward<GeneratorFunc>(func), stack_size);
+}
+
 } // namespace generator
