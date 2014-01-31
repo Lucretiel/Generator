@@ -15,8 +15,7 @@ using namespace generator;
 
 int main()
 {
-	Generator<unsigned> fibonacci(
-	[](Yield<unsigned> yield)
+	auto fib = [](Yield<unsigned> yield)
 	{
 		unsigned a = 0;
 		unsigned b = 1;
@@ -27,14 +26,19 @@ int main()
 			b = a + b;
 			a = tmp;
 		}
-	});
+	};
 
-	for(unsigned i : fibonacci)
+	for(unsigned i : Generator<unsigned>(fib))
 	{
 		std::cout << i << '\n';
-		if(i > 5000) fibonacci.kill();
+		if(i > 50) break;
 	}
 
+	for(unsigned j : Generator<unsigned>(fib))
+	{
+		std::cout << j << '\n';
+		if(j > 50) break;
+	}
 
 	Generator<std::string> printer(
 	[](Yield<std::string> yield)

@@ -48,7 +48,6 @@ public:
 		_stack(static_cast<char*>(std::calloc(_size, sizeof(char))))
 	{
 		if(!_stack) throw std::bad_alloc();
-		_stack += _size;
 	}
 
 	~ScopedStack()
@@ -82,41 +81,15 @@ public:
 	//Clear the stack
 	void clear()
 	{
-		std::free(_stack - _size);
+		std::free(_stack);
 		_stack = nullptr;
 	}
-
 	//Get stack pointer
-	void* stack() const { return _stack; }
+	void* stack() const { return _stack + _size; }
 
 	//Get the allocated size of the stack
 	std::size_t size() const { return _size; }
 }; // class ManagedStack
-
-/*
- * Needed for OwningGenerator to ensure correct order of initialization. To keep
- * the OwningGenerator implementation simple, it inherits from Generator-
- * otherwise we'd need to reimplement Generator's public interface. However,
- * base classes are always initialzied before members, and we need to make sure
- * the owned functor is initialized before the generator.
- */
-template<class T>
-class Holder
-{
-public:
-	T object;
-
-	explicit Holder(const T& obj):
-			object(obj)
-	{}
-
-	explicit Holder(T&& obj):
-			object(std::move(obj))
-	{}
-
-	Holder(Holder&&) =default;
-	Holder& operator=(Holder&&) =default;
-}; //class Holder
 
 } //namespace detail
 
@@ -125,12 +98,6 @@ public:
  * Standard Generator. Creates and manages a context. Execution of this context
  * can be paused and resumed, and the context can send values by reference out
  * of the generator.
- *
- * Generators do NOT own the client functor that is passed to its constructor.
- * This is to allow all generators with the same YieldType to have the same
- * type; this makes many things easier- particularly the type complete of
- * Generator::Yield, which is passed to the functor and doesn't especially need
- * to know the functor type.
  */
 template<class YieldType>
 class Generator
@@ -208,7 +175,6 @@ public:
 	 *
 	 * TODO: define explicit behavior for what happens if this happens
 	 */
-	friend class Yielder;
 
 	class Yield
 	{
@@ -291,17 +257,44 @@ private:
 	{
 		//Copy the pointers to this stack, just to be safe
 		auto bootstrap = *reinterpret_cast<ContextBootstrap<GeneratorFunc>*>(p);
-		bootstrap.self->context_base(bootstrap.func);
+		bootstrap.self->context_base(bootstrap.func, false);
+	}
+
+	//As above, but this version tells the context_base to steal the object
+	template<class GeneratorFunc>
+	static void static_context_base_steal(intptr_t p)
+	{
+		auto bootstrap = *reinterpret_cast<ContextBootstrap<GeneratorFunc>*>(p);
+		bootstrap.self->context_base(bootstrap.func, true);
 	}
 
 	/*
 	 * Primary wrapper. Launches function, handles ImmediateStop exceptions,
-	 * and cleans up on an exit.
+	 * and cleans up on an exit. If steal is true, func is taken to be an
+	 * rvalue and moved onto the local stack.
+	 *
+	 * TODO: find a way to return a ptr/reference to this object to the outer
+	 * context, without introducing a template into the Generator class.
+	 *
+	 * Note that you can't just create a local in static_context_base_steal and
+	 * pass a pointer to it, because you need to make sure the local is
+	 * destroyed.
 	 */
 	template<class GeneratorFunc>
-	void context_base(GeneratorFunc* func)
+	void context_base(GeneratorFunc* func, bool steal)
 	{
-		try { (*func)(Yield(this)); }
+		try
+		{
+			if(steal)
+			{
+				GeneratorFunc local_func(std::move(*func));
+				local_func(Yield(this));
+			}
+			else
+			{
+				(*func)(Yield(this));
+			}
+		}
 		catch(ImmediateStop&) {}
 
 		current_value = nullptr;
@@ -522,64 +515,7 @@ public:
 	}
 }; // class Generator
 
-/*
- * OwningGenerator is a generator variant that owns the Functor it uses. It
- * has the same interface as Generator, with the addition of the get_functor
- * method
- */
-template<class YieldType, class GeneratorFunc>
-class OwningGenerator:
-		private detail::Holder<GeneratorFunc>,
-		public Generator<YieldType>
-{
-public:
-	/*
-	 * Copy the functor into internal storage, then create and launch a
-	 * generator using it.
-	 */
-	OwningGenerator(const GeneratorFunc& func, std::size_t stack_size = 0):
-		detail::Holder<GeneratorFunc>(func),
-		Generator<YieldType>(this->object, stack_size)
-	{}
-
-	/*
-	 * Move the functor into internal storage, then create and launch a
-	 * generator using it.
-	 */
-	OwningGenerator(GeneratorFunc&& func, std::size_t stack_size = 0):
-		detail::Holder<GeneratorFunc>(std::move(func)),
-		Generator<YieldType>(this->object, stack_size)
-	{}
-
-	OwningGenerator(const OwningGenerator&) =delete;
-	OwningGenerator(OwningGenerator&& mve) =default;
-	OwningGenerator& operator=(const OwningGenerator&) =delete;
-	OwningGenerator& operator=(OwningGenerator&&) =delete;
-
-	/*
-	 * Get the underlying functor object.
-	 */
-	GeneratorFunc& get_func() const
-	{
-		return this->object;
-	}
-}; //class OwningGenerator
-
 template<class YieldType>
 using Yield = typename Generator<YieldType>::Yield;
-
-//Disabled until move issues are resolved
-
-/*
- * make_owning_generator- type deduction for OwningGenerator. Stick a lambda in
- * there!
- */
-//template<class YieldType, class GeneratorFunc>
-//OwningGenerator<YieldType, GeneratorFunc> make_owning_generator(
-//		GeneratorFunc&& func, std::size_t stack_size = 0)
-//{
-//	return OwningGenerator<YieldType, GeneratorFunc>(
-//		std::forward<GeneratorFunc>(func), stack_size);
-//}
 
 } // namespace generator
