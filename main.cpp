@@ -15,7 +15,7 @@ using namespace generator;
 
 int main()
 {
-	auto fibonacci = make_owning_generator<unsigned>(
+	Generator<unsigned> fibonacci(
 	[](Yield<unsigned> yield)
 	{
 		unsigned a = 0;
@@ -29,12 +29,14 @@ int main()
 		}
 	});
 
-	for(unsigned i = *fibonacci.get(); i < 1000; i = *fibonacci.next())
+	for(unsigned i : fibonacci)
 	{
 		std::cout << i << '\n';
+		if(i > 5000) fibonacci.kill();
 	}
 
-	auto printer = make_owning_generator<std::string>(
+
+	Generator<std::string> printer(
 	[](Yield<std::string> yield)
 	{
 		std::string str;
