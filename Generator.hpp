@@ -95,9 +95,6 @@ public:
 
 } //namespace detail
 
-//TODO: const GeneratorFunc overloads (?)
-
-
 /*
  * Generator. Creates and manages a context. Execution of this context can be
  * paused and resumed, and the context can send values by reference out of the
@@ -252,14 +249,6 @@ private:
 		GeneratorFunc* func;
 	};
 
-	//Type deduction helper
-	template<class GeneratorFunc>
-	ContextBootstrap<GeneratorFunc> make_bootstrap(
-			Generator* self, GeneratorFunc* func)
-	{
-		return ContextBootstrap<GeneratorFunc>{self, func};
-	}
-
 	/*
 	 * Launch the context. Set the self pointer, so that moves won't break
 	 * anything. Create a Yield object and launch the generator with it,
@@ -284,7 +273,7 @@ private:
 	}
 
 	//As above, but also moves-constructs the functor on this stack and uses it
-	//TODO: eliminate the code repetition, ideally without a variable
+	//TODO: eliminate the code repetition, ideally without a (runtime) variable
 	template<class GeneratorFunc>
 	static void static_context_base_own(intptr_t p)
 	{
@@ -383,6 +372,25 @@ private:
 		inner_context = nullptr;
 		inner_stack.clear();
 	}
+
+private:
+	//Delegated constructor
+	template<class GeneratorFunc>
+	explicit Generator(GeneratorFunc* func, void(*context_base)(intptr_t),
+			std::size_t stack_size):
+
+		inner_stack(stack_size),
+		current_value(nullptr),
+		self(nullptr),
+		inner_context(boost::context::make_fcontext(
+			inner_stack.stack(),
+			inner_stack.size(),
+			context_base))
+	{
+		ContextBootstrap<GeneratorFunc> bootstrap{this, func};
+		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
+	}
+
 public:
 	/*
 	 * Constructors: Create and launch a new generator context.
@@ -398,26 +406,19 @@ public:
 	 *   this minimum size
 	 */
 
-	//TODO: create a private constructor to delegate to
-
 	/*
 	 * Normal reference version. Takes a reference to a callable object, and
 	 * uses that object in the context. This means that the object's members are
 	 * usable outside of the context.
+	 *
+	 * This can also take a reference to a const object- the GeneratorFunc
+	 * template parameter will be deduced to const Type, so as long as the
+	 * object's operator() is const as well everything will be fine.
 	 */
 	template<class GeneratorFunc>
 	explicit Generator(GeneratorFunc& func, std::size_t stack_size = 0):
-		inner_stack(stack_size),
-		current_value(nullptr),
-		self(nullptr),
-		inner_context(boost::context::make_fcontext(
-			inner_stack.stack(),
-			inner_stack.size(),
-			&Generator::static_context_base<GeneratorFunc>))
-	{
-		auto bootstrap(make_bootstrap(this, &func));
-		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
-	}
+		Generator(&func, &static_context_base<GeneratorFunc>, stack_size)
+	{}
 
 	/*
 	 * Function pointer version. Takes a function pointer with the correct
@@ -426,17 +427,8 @@ public:
 	 * reference constructor.
 	 */
 	explicit Generator(void (*func)(Yield), std::size_t stack_size = 0):
-		inner_stack(stack_size),
-		current_value(nullptr),
-		self(nullptr),
-		inner_context(boost::context::make_fcontext(
-			inner_stack.stack(),
-			inner_stack.size(),
-			&Generator::static_context_base<void(Yield)>))
-	{
-		auto bootstrap(make_bootstrap(this, func));
-		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
-	}
+		Generator(func, &static_context_base<void(Yield)>, stack_size)
+	{}
 
 	/*
 	 * rvalue reference function. Takes an rvalue ref to the function object
@@ -445,17 +437,8 @@ public:
 	 */
 	template<class GeneratorFunc>
 	explicit Generator(GeneratorFunc&& func, std::size_t stack_size = 0):
-		inner_stack(stack_size),
-		current_value(nullptr),
-		self(nullptr),
-		inner_context(boost::context::make_fcontext(
-			inner_stack.stack(),
-			inner_stack.size(),
-			&Generator::static_context_base_own<GeneratorFunc>))
-	{
-		auto bootstrap(make_bootstrap(this, &func));
-		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
-	}
+		Generator(&func, &static_context_base_own<GeneratorFunc>, stack_size)
+	{}
 
 	//When destructed, a generator tries to gracefully exit.
 	~Generator()
