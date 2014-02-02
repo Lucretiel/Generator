@@ -9,37 +9,36 @@
 
 #include <string>
 #include <iostream>
+#include <vector>
 #include "Generator.hpp"
 
 using namespace generator;
 
+void fibonacci(Yield<unsigned> yield)
+{
+	unsigned a = 0;
+	unsigned b = 1;
+	while(true)
+	{
+		yield(a);
+		unsigned tmp = b;
+		b = a + b;
+		a = tmp;
+	}
+}
+
 int main()
 {
-	auto fib = [](Yield<unsigned> yield)
-	{
-		unsigned a = 0;
-		unsigned b = 1;
-		while(true)
-		{
-			yield(a);
-			unsigned tmp = b;
-			b = a + b;
-			a = tmp;
-		}
-	};
-
-	for(unsigned i : Generator<unsigned>(fib))
+	//Function pointer version
+	Generator<unsigned> fib(&fibonacci);
+	for(unsigned i : fib)
 	{
 		std::cout << i << '\n';
 		if(i > 50) break;
 	}
 
-	for(unsigned j : Generator<unsigned>(fib))
-	{
-		std::cout << j << '\n';
-		if(j > 50) break;
-	}
-
+	//Lambda version
+	//Also notice the yield-by-reference
 	Generator<std::string> printer(
 	[](Yield<std::string> yield)
 	{
@@ -57,4 +56,5 @@ int main()
 		std::cout << "Enter a string (Stop to stop): ";
 		std::getline(std::cin, str);
 	}
+
 }

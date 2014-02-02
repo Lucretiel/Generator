@@ -27,7 +27,8 @@ namespace detail
  *
  * Implementation note: currently, this callocates a block, then returns a
  * pointer to the other side of the block, because stacks grow down. In the
- * future this will be done in more platform-specific ways.
+ * future this will be done in more platform-specific ways- page allocation,
+ * guards, etc.
  */
 class ScopedStack
 {
@@ -83,21 +84,24 @@ public:
 	{
 		std::free(_stack);
 		_stack = nullptr;
+		_size = 0;
 	}
-	//Get stack pointer
-	void* stack() const { return _stack + _size; }
+	//Get stack pointer. Returns nullptr if nothing is allocated.
+	void* stack() const { return _stack ? _stack + _size : nullptr; }
 
-	//Get the allocated size of the stack
+	//Get the allocated size of the stack. Returns 0 if nothing is allocated.
 	std::size_t size() const { return _size; }
 }; // class ManagedStack
 
 } //namespace detail
 
 //TODO: const GeneratorFunc overloads (?)
+
+
 /*
- * Standard Generator. Creates and manages a context. Execution of this context
- * can be paused and resumed, and the context can send values by reference out
- * of the generator.
+ * Generator. Creates and manages a context. Execution of this context can be
+ * paused and resumed, and the context can send values by reference out of the
+ * generator.
  */
 template<class YieldType>
 class Generator
@@ -181,9 +185,11 @@ public:
 	private:
 		friend class Generator;
 
-		Generator* const gen;
+		Generator *const *const gen;
 
-		explicit Yield(Generator* generator):
+		Generator& get_gen() { return **gen; }
+
+		explicit Yield(Generator *const *const generator):
 			gen(generator)
 		{}
 
@@ -192,7 +198,7 @@ public:
 		template<class T>
 		void operator()(T&& object)
 		{
-			gen->yield(&object);
+			get_gen().yield(&object);
 		}
 
 		/*
@@ -212,7 +218,7 @@ public:
 		 */
 		void exit()
 		{
-			gen->exit_generator(GeneratorState::Done);
+			get_gen().exit_generator(GeneratorState::Done);
 		}
 	};
 
@@ -224,6 +230,9 @@ private:
 
 	//Pointer to the most recently yielded value, which lives in the context
 	YieldType* current_value;
+
+	//Pointer to the context's copy of the this pointer
+	Generator** self;
 
 	//See the boost context docs for detailed info on these types.
 	//data for the execution point of the inner context
@@ -251,54 +260,57 @@ private:
 		return ContextBootstrap<GeneratorFunc>{self, func};
 	}
 
-	//initiator function to fit into make_fcontext
+	/*
+	 * Launch the context. Set the self pointer, so that moves won't break
+	 * anything. Create a Yield object and launch the generator with it,
+	 */
 	template<class GeneratorFunc>
 	static void static_context_base(intptr_t p)
 	{
-		//Copy the pointers to this stack, just to be safe
+		//Copy the pointers to this stack
 		auto bootstrap = *reinterpret_cast<ContextBootstrap<GeneratorFunc>*>(p);
-		bootstrap.self->context_base(bootstrap.func, false);
+
+		//Set the self pointer in the Generator
+		bootstrap.self->self = &bootstrap.self;
+
+		//Launch the client function in this context
+		try { (*bootstrap.func)(Yield(&bootstrap.self)); }
+		catch(ImmediateStop&) {}
+
+		//Leave the context
+		bootstrap.self->current_value = nullptr;
+		bootstrap.self->self = nullptr;
+		bootstrap.self->exit_generator(GeneratorState::Done);
 	}
 
-	//As above, but this version tells the context_base to steal the object
+	//As above, but also moves-constructs the functor on this stack and uses it
+	//TODO: eliminate the code repetition, ideally without a variable
 	template<class GeneratorFunc>
-	static void static_context_base_steal(intptr_t p)
+	static void static_context_base_own(intptr_t p)
 	{
+		//Copy the pointers to this stack
 		auto bootstrap = *reinterpret_cast<ContextBootstrap<GeneratorFunc>*>(p);
-		bootstrap.self->context_base(bootstrap.func, true);
-	}
 
-	/*
-	 * Primary wrapper. Launches function, handles ImmediateStop exceptions,
-	 * and cleans up on an exit. If steal is true, func is taken to be an
-	 * rvalue and moved onto the local stack.
-	 *
-	 * TODO: find a way to return a ptr/reference to this object to the outer
-	 * context, without introducing a template into the Generator class.
-	 *
-	 * Note that you can't just create a local in static_context_base_steal and
-	 * pass a pointer to it, because you need to make sure the local is
-	 * destroyed.
-	 */
-	template<class GeneratorFunc>
-	void context_base(GeneratorFunc* func, bool steal)
-	{
+		//Set the self pointer in the Generator
+		bootstrap.self->self = &bootstrap.self;
+
 		try
 		{
-			if(steal)
-			{
-				GeneratorFunc local_func(std::move(*func));
-				local_func(Yield(this));
-			}
-			else
-			{
-				(*func)(Yield(this));
-			}
+			/*
+			 * Create a local copy of the GeneratorFunc. Do it in the try block
+			 * so that it is properly destructed at the end.
+			 */
+			GeneratorFunc func(std::move(*bootstrap.func));
+
+			//launch the client function in this context
+			func(Yield(&bootstrap.self));
 		}
 		catch(ImmediateStop&) {}
 
-		current_value = nullptr;
-		exit_generator(GeneratorState::Done);
+		//Leave the context
+		bootstrap.self->current_value = nullptr;
+		bootstrap.self->self = nullptr;
+		bootstrap.self->exit_generator(GeneratorState::Done);
 	}
 
 private:
@@ -373,11 +385,11 @@ private:
 	}
 public:
 	/*
-	 * Create and launch a new generator context.
+	 * Constructors: Create and launch a new generator context.
 	 *
 	 * Args:
-	 *   GeneratorFunc& func: a reference to a callable object, which should
-	 *   have the signature void func(Yield<YieldType>).
+	 *   func: The client function/function object to be used. The different
+	 *   constructors treat this argument in different ways.
 	 *
 	 *   std::size_t stack_size: The requested size of the stack. The actual
 	 *   allocated stack size will not be smaller than some implementation
@@ -385,11 +397,19 @@ public:
 	 *   allocated size, and see the detai::ScopedStack class for details on
 	 *   this minimum size
 	 */
+
+	//TODO: create a private constructor to delegate to
+
+	/*
+	 * Normal reference version. Takes a reference to a callable object, and
+	 * uses that object in the context. This means that the object's members are
+	 * usable outside of the context.
+	 */
 	template<class GeneratorFunc>
 	explicit Generator(GeneratorFunc& func, std::size_t stack_size = 0):
-
 		inner_stack(stack_size),
 		current_value(nullptr),
+		self(nullptr),
 		inner_context(boost::context::make_fcontext(
 			inner_stack.stack(),
 			inner_stack.size(),
@@ -399,47 +419,73 @@ public:
 		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
 	}
 
-	//TODO: delegate this call to the template version
-	//Function pointer version
-	explicit Generator(void (*func_ptr)(Yield),
-			std::size_t stack_size = 0):
-
+	/*
+	 * Function pointer version. Takes a function pointer with the correct
+	 * signature and uses it in the context. This is provided to prevent an
+	 * unnessesary copy into the context that would be performed by the rvalue
+	 * reference constructor.
+	 */
+	explicit Generator(void (*func)(Yield), std::size_t stack_size = 0):
 		inner_stack(stack_size),
 		current_value(nullptr),
+		self(nullptr),
 		inner_context(boost::context::make_fcontext(
 			inner_stack.stack(),
 			inner_stack.size(),
-			&Generator::static_context_base<void(*)(Yield)>))
+			&Generator::static_context_base<void(Yield)>))
 	{
-		auto bootstrap(make_bootstrap(this, &func_ptr));
+		auto bootstrap(make_bootstrap(this, func));
 		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
 	}
 
 	/*
-	 * Kill a context. This calls stop().
+	 * rvalue reference function. Takes an rvalue ref to the function object
+	 * being used (for instance, a capturing lambda). It move-constructs an
+	 * object of this type in the context and uses that object.
 	 */
+	template<class GeneratorFunc>
+	explicit Generator(GeneratorFunc&& func, std::size_t stack_size = 0):
+		inner_stack(stack_size),
+		current_value(nullptr),
+		self(nullptr),
+		inner_context(boost::context::make_fcontext(
+			inner_stack.stack(),
+			inner_stack.size(),
+			&Generator::static_context_base_own<GeneratorFunc>))
+	{
+		auto bootstrap(make_bootstrap(this, &func));
+		enter_generator(reinterpret_cast<intptr_t>(&bootstrap));
+	}
+
+	//When destructed, a generator tries to gracefully exit.
 	~Generator()
 	{
 		stop();
 	}
 
-	//No copying generators
+	//No copying or move-assigning generators
 	Generator(const Generator&) =delete;
 	Generator& operator=(const Generator&) =delete;
-
-	Generator(Generator&&) =delete;
 	Generator& operator=(Generator&&) =delete;
+
 	/*
-	 * TODO: FIX MOVES. Right now there is a potential bug where, when a move
-	 * happens, the old this pointer might still be used in some places- on the
-	 * context's stack, and in the Yield object passed to the functor.
-	 *
-	 * Potential solutions:
-	 * unique_ptr to some internal shared state
-	 * return reference class from functions
-	 * delay generator launch; prevent move once launched
-	 * RADICAL: prevent moves, but give shared_ptrs to iterators.
+	 * Move-construct from a running generator. The other generator no longer
+	 * refers to a context.
 	 */
+	Generator(Generator&& mve):
+		inner_stack(std::move(mve.inner_stack)),
+		current_value(mve.current_value),
+		self(mve.self),
+		inner_context(mve.inner_context)
+	{
+		//Update the in-context self pointer, so that Yield doesn't break.
+		(*self) = this;
+
+		//Clear the other context.
+		mve.current_value = nullptr;
+		mve.self = nullptr;
+		mve.inner_context = nullptr;
+	}
 
 	//Resume the context until the next yield
 	void advance()
@@ -497,7 +543,7 @@ public:
 		return inner_context == nullptr;
 	}
 
-	//Iterators
+	//Iterators.
 	iterator begin()
 	{
 		return iterator(this);
