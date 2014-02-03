@@ -111,6 +111,8 @@ public:
  * Generator. Creates and manages a context. Execution of this context can be
  * paused and resumed, and the context can send values by reference out of the
  * generator.
+ *
+ * TODO: Generators that don't yield anything, supported by type traits.
  */
 template<class YieldType>
 class Generator
@@ -208,6 +210,12 @@ public:
 		void operator()(T&& object)
 		{
 			get_gen().yield(&object);
+		}
+
+		//Yield nothing
+		void operator()()
+		{
+			get_gen().yield(nullptr);
 		}
 
 		/*
@@ -522,12 +530,6 @@ public:
 
 	//Get a pointer to the most recently yielded object.
 	YieldType* get() const
-	{
-		return current_value;
-	}
-
-	//Get a const pointer to the most recently yielded object.
-	const YieldType* cget() const
 	{
 		return current_value;
 	}
