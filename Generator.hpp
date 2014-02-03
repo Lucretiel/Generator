@@ -190,6 +190,7 @@ public:
 			gen(gen)
 		{}
 	};
+	//TODO: const_iterator? It may not make sense, because const Generators can't be iterated over.
 
 	/*
 	 * The Yielder class is passed into the client context to allow it to
