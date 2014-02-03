@@ -113,6 +113,15 @@ int main()
 Details
 -------
 
+### Getting and using the library
+
+This library is header-only, and all contained in a single file. However, it
+depends on boost (specifically `boost::context` and `boost::iterator_facade`).
+`boost::context` in particular needs to be build and linked against in order
+to use the generator; see the boost docs at
+http://www.boost.org/doc/libs/1_55_0/more/getting_started/index.html
+to learn how to build this library on your system.
+
 ### Construction
 
 A Generator can be constructed with any callable object or function pointer with
