@@ -46,7 +46,7 @@ private:
 	{
 		return request < min_size ?
 			min_size :
-			(request / page_size) + 1;
+			((request / page_size) + 1) * page_size;
 	}
 
 public:
