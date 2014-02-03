@@ -63,14 +63,14 @@ int main()
 		cout << "[generator] exiting generator\n";
 	});
 
-	cout << "[main] beginning for loop\n";
-	for(int i = 5; i > 0; --i)
+	cout << "[main] beginning for() loop\n";
+
+	for(int i : generator)
 	{
-		cout << "[main] local i: " << i << "\n";
-		cout << "[main] getting from generator: " << *generator.get() << "\n";
-		cout << "[main] advancing generator\n";
-		generator.advance();
+	    cout << "[main] got " << i << " from generator\n";
 	}
+
+	cout << "[main] for() loop complete\n";
 	cout << "[main] exiting\n";
 }
 ```
@@ -82,31 +82,22 @@ int main()
 [generator] generator started
 [generator] local i: 0
 [generator] yielding i
-[main] beginning for loop
-[main] local i: 5
-[main] getting from generator: 0
-[main] advancing generator
+[main] beginning for() loop
+[main] got 0 from generator
 [generator] local i: 1
 [generator] yielding i
-[main] local i: 4
-[main] getting from generator: 1
-[main] advancing generator
+[main] got 1 from generator
 [generator] local i: 2
 [generator] yielding i
-[main] local i: 3
-[main] getting from generator: 2
-[main] advancing generator
+[main] got 2 from generator
 [generator] local i: 3
 [generator] yielding i
-[main] local i: 2
-[main] getting from generator: 3
-[main] advancing generator
+[main] got 3 from generator
 [generator] local i: 4
 [generator] yielding i
-[main] local i: 1
-[main] getting from generator: 4
-[main] advancing generator
+[main] got 4 from generator
 [generator] exiting generator
+[main] for() loop complete
 [main] exiting
 ```
 
@@ -151,7 +142,103 @@ construction, move-constructing a generator does not resume or launch the
 internal context.
 
 Generators cannot be copied. They currently cannot be move-assigned, though this
-may change in a future release.
+will change in a future release.
+
+#### Example:
+
+```cpp
+#include <iostream>
+#include "Generator.hpp"
+
+using namespace generator;
+using namespace std;
+
+class FuncObj
+{
+public:
+    int x;
+
+    void operator() (Yield<int> yield)
+    {
+        cout << "[FuncObj] x is " << x << "\n";
+        cout << "[FuncObj] setting x to 10\n";
+        x = 10;
+        cout << "[FuncObj] yielding\n";
+        yield();
+        cout << "[FuncObj] x is " << x << "\n";
+    }
+
+    FuncObj(int i): x(i) {}
+
+    FuncObj(const FuncObj& cpy): x(cpy.x)
+    { cout << "FuncObj copied\n"; }
+
+    FuncObj(FuncObj&& mve): x(mve.x)
+    { cout << "FuncObj moved\n"; }
+
+    ~FuncObj()
+    { cout << "FuncObj destructed\n"; }
+};
+
+int main()
+{
+    //lvalue
+    cout << "[main] creating FuncObj, with value 20\n";
+    FuncObj func(20);
+
+    cout << "[main] creating gen1 with lvalue\n";
+    Generator<int> gen1(func);
+
+    cout << "[main] func.x: " << func.x << "\n";
+
+    cout << "[main] setting func.x to 15\n";
+    func.x = 15;
+
+    cout << "[main] advancing gen1\n";
+    gen1.advance();
+
+    //rvalue
+    cout << "[main] creating gen2 with rvalue, initial value 30\n";
+    Generator<int> gen2(FuncObj(30));
+
+    cout << "[main] advancing gen2\n";
+    gen2.advance();
+}
+```
+
+#### Output:
+
+```
+[main] creating gen1 with rvalue, initial value 30
+FuncObj moved
+[FuncObj] x is 30
+[FuncObj] setting x to 10
+[FuncObj] yielding
+FuncObj destructed
+[main] advancing gen1
+[FuncObj] x is 10
+FuncObj destructed
+[main] creating FuncObj, with value 20
+[main] creating gen2 with lvalue
+[FuncObj] x is 20
+[FuncObj] setting x to 10
+[FuncObj] yielding
+[main] func.x: 10
+[main] setting func.x to 15
+[main] advancing gen2
+[FuncObj] x is 15
+FuncObj destructed
+```
+
+#### Notes on Example:
+
+- 3 `FuncObj`s are destroyed. The first is the temporary passed into the
+Generator, which isn't destroyed until control returns to the constructor. The
+second is the local copy created inside of `gen1`, which is destroyed when the
+generator becomes stopped. The last is the local one in `main`, which is
+destroyed when main returns.
+
+- Notice that no copies or moves were made of the FuncObj passed to gen2.
 
 ### Yielding and Generator lifetime
 
