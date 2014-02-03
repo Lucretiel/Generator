@@ -1,10 +1,10 @@
 /*
- * main.cpp
+ * demo.cpp
  *
  *  Created on: Feb 7, 2013
  *      Author: nathan
  *
- *  This is really just demos. The library itself is header-only.
+ *  This is just demos. The library itself is header-only.
  */
 
 #include <string>
