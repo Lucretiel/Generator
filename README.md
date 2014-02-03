@@ -196,7 +196,7 @@ old iterators. An iterator will compare equal to the `end()` iterator when the
 generator becomes stopped. Postfix-incrementing the iterator creates a copy of
 the yielded object and stores it in a proxy before advancing the generator. This
 is why these iterator do not model standard OutputIterators; they do not have
-postfix-increment-assignment (`*it++ = x;`) will not assign x to the yielded
+postfix-increment-assignment (`*it++ = x;` will not assign x to the yielded
 value in the generator). If the generator yields forever, iteration will never
 terminate. Yielding nothing to an iterator is undefined behavior, as it is the
 same as dereferencing a `nullptr`.
