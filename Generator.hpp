@@ -19,6 +19,10 @@
 
 namespace generator
 {
+
+template<class YieldType>
+class Generator;
+
 namespace detail
 {
 
@@ -120,11 +124,18 @@ class Generator
 private:
 	//Internal typedefs and types
 
-	//Return states to give to the generator
-	enum class YieldBack : intptr_t {Resume, Stop};
+	/*
+	 * A ContextAction is sent INTO the context, to instruct it to either resume
+	 * or stop.
+	 */
+	enum class ContextAction : intptr_t {Resume, Stop};
 
-	//Return states to get from the generator
-	enum class GeneratorState : intptr_t {Continue, Done};
+	/*
+	 * A ContextResponse is sent OUT OF the context, back to the caller, to
+	 * indicate if it is only paused, and can be continued, or if it is done and
+	 * can be cleaned up.
+	 */
+	enum class ContextResponse : intptr_t {Continue, Done};
 
 	//thrown from yield() when the context must be immediately destroyed.
 	class ImmediateStop {};
@@ -235,7 +246,7 @@ public:
 		 */
 		void exit()
 		{
-			get_gen().exit_generator(GeneratorState::Done);
+			get_gen().exit_generator(ContextResponse::Done);
 		}
 	};
 
@@ -289,7 +300,7 @@ private:
 		//Leave the context
 		bootstrap.self->current_value = nullptr;
 		bootstrap.self->self = nullptr;
-		bootstrap.self->exit_generator(GeneratorState::Done);
+		bootstrap.self->exit_generator(ContextResponse::Done);
 	}
 
 	//As above, but also moves-constructs the functor on this stack and uses it
@@ -319,25 +330,25 @@ private:
 		//Leave the context
 		bootstrap.self->current_value = nullptr;
 		bootstrap.self->self = nullptr;
-		bootstrap.self->exit_generator(GeneratorState::Done);
+		bootstrap.self->exit_generator(ContextResponse::Done);
 	}
 
 private:
 	//Methods for exiting the context
 
 	//core wrapper for jump_fcontext call out of the generator
-	YieldBack jump_out_of_generator(GeneratorState state)
+	ContextAction jump_out_of_generator(ContextResponse response)
 	{
-		return static_cast<YieldBack>(
+		return static_cast<ContextAction>(
 			boost::context::jump_fcontext(
 				inner_context, &outer_context, static_cast<intptr_t>(
-					state)));
+					response)));
 	}
 
 	//Jump out of a generator. Checks for a stop instruction
-	void exit_generator(GeneratorState state)
+	void exit_generator(ContextResponse response)
 	{
-		if(jump_out_of_generator(state) == YieldBack::Stop)
+		if(jump_out_of_generator(response) == ContextAction::Stop)
 		{
 			throw ImmediateStop();
 		}
@@ -347,16 +358,16 @@ private:
 	void yield(YieldType* obj)
 	{
 		current_value = obj;
-		exit_generator(GeneratorState::Continue);
+		exit_generator(ContextResponse::Continue);
 	}
 
 private:
 	//Context Entry
 
 	//core wrapper for jump_fcontext call into the generator
-	GeneratorState jump_into_generator(intptr_t val)
+	ContextResponse jump_into_generator(intptr_t val)
 	{
-		return static_cast<GeneratorState>(
+		return static_cast<ContextResponse>(
 			boost::context::jump_fcontext(
 				&outer_context, inner_context, val));
 	}
@@ -364,7 +375,7 @@ private:
 	/*
 	 * Checked jump into generator. checks that the context exists before
 	 * entering it, and clears the context if it receives a
-	 * GeneratorState::Done
+	 * ContextResponse::Done
 	 */
 	void enter_generator(intptr_t val)
 	{
@@ -372,17 +383,17 @@ private:
 		if(inner_context)
 		{
 			//If the generator finishes, clean it up
-			if(jump_into_generator(val) == GeneratorState::Done)
+			if(jump_into_generator(val) == ContextResponse::Done)
 			{
 				clear_generator_context();
 			}
 		}
 	}
 
-	//Checked jump into the generator with a return state
-	void resume_generator(YieldBack yield_back)
+	//Checked jump into the generator with an action
+	void resume_generator(ContextAction action)
 	{
-		enter_generator(static_cast<intptr_t>(yield_back));
+		enter_generator(static_cast<intptr_t>(action));
 	}
 
 	//Wipe the generator context. Doesn't perform any cleanup in the context.
@@ -493,7 +504,7 @@ public:
 	//Resume the context until the next yield
 	void advance()
 	{
-		resume_generator(YieldBack::Resume);
+		resume_generator(ContextAction::Resume);
 	}
 
 	/*
@@ -515,7 +526,7 @@ public:
 	 */
 	void stop()
 	{
-		resume_generator(YieldBack::Stop);
+		resume_generator(ContextAction::Stop);
 		clear_generator_context();
 	}
 
