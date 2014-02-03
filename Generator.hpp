@@ -36,16 +36,28 @@ private:
 	std::size_t _size;
 	char* _stack;
 
+	//Round up to the nearest N pages. Also enforce minimum.
+	//FIXME: right now an even multiple of page_size adds an extra page
+	static constexpr std::size_t actual_stack_size(std::size_t request)
+	{
+		return request < min_size ?
+			min_size :
+			(request / page_size) + 1;
+	}
+
 public:
+	//TODO: actually lookup this value
+	const static std::size_t page_size = 1024 * 4;
+
 	//TODO: pick this value more intelligently
-	const static std::size_t min_size = 1024 * 8; //8KB, 2 pages on my system
+	const static std::size_t min_size = page_size * 2;
 
 	//TODO: allocate at page boundary
 	//TODO: guard page
 	//TODO: platform specific allocation, to ensure the stack growth is correct
 	//See mprotect(2), sysconf(2), mmap(2)
 	explicit ScopedStack(std::size_t size = 0):
-		_size(size > min_size ? size : min_size),
+		_size(actual_stack_size(size)),
 		_stack(static_cast<char*>(std::calloc(_size, sizeof(char))))
 	{
 		if(!_stack) throw std::bad_alloc();
