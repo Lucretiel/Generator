@@ -20,9 +20,6 @@
 namespace generator
 {
 
-template<class YieldType>
-class Generator;
-
 namespace detail
 {
 
