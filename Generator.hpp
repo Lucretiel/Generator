@@ -167,12 +167,9 @@ public:
 		//increment, dereference, and equal are used by iterator_facade
 		void increment()
 		{
-			if(gen)
-			{
-				gen->advance();
-				if(gen->stopped())
-					gen = nullptr;
-			}
+			gen->advance();
+			if(gen->stopped())
+				gen = nullptr;
 		}
 
 		YieldType& dereference() const
