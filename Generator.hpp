@@ -59,7 +59,7 @@ public:
 	//See mprotect(2), sysconf(2), mmap(2)
 	explicit ScopedStack(std::size_t size = 0):
 		_size(actual_stack_size(size)),
-		_stack(static_cast<char*>(std::calloc(_size, sizeof(char))))
+		_stack(static_cast<char*>(std::calloc(_size))
 	{
 		if(!_stack) throw std::bad_alloc();
 	}
